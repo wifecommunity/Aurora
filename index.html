@@ -1,0 +1,3005 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>W.I.F.E AURORA – Squad Management System</title>
+<meta name="description" content="W.I.F.E AURORA – Sistem Manajemen Internal Squad Ladies Mobile Legends"/>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#A855F7"/>
+<link rel="icon" type="image/png" href="aurora-icon-favicon.png"/>
+<link rel="apple-touch-icon" href="aurora-icon-apple-touch.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="WIFE Aurora"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css"/>
+<script src="https://unpkg.com/aos@2.3.4/dist/aos.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- Tailwind CSS — wajib untuk semua utility classes (grid, flex, gap, p-*, text-*, dll) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    corePlugins: { preflight: false },
+    theme: {
+      extend: {
+        colors: {
+          purple: { neon: '#00E5FF', light: '#9B59FF', DEFAULT: '#6B3FD4' },
+          gold: { light: '#87CEEB', DEFAULT: '#4FACFE' }
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Firebase v10 Modular -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDocs, getDoc, onSnapshot, query, orderBy, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+// ══════════════════════════════════════════════════════════════
+//  FIREBASE CONFIG — ganti dengan config Firebase kamu
+// ══════════════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDeJBvhi-HpIZuyI9BsnRRpnbG2SjjJsmY",
+  authDomain: "wife-aurora.firebaseapp.com",
+  projectId: "wife-aurora",
+  storageBucket: "wife-aurora.firebasestorage.app",
+  messagingSenderId: "316768151084",
+  appId: "1:316768151084:web:920a1dac6abbf956a2d389"
+};
+
+// ══════════════════════════════════════════════════════════════
+//  CLOUDINARY CONFIG — ganti dengan config Cloudinary kamu
+// ══════════════════════════════════════════════════════════════
+const CLOUDINARY_CLOUD_NAME = 'daytjx9h2';
+const CLOUDINARY_UPLOAD_PRESET = 'ldtf5gru'; // unsigned preset
+
+// ── Init ──────────────────────────────────────────────────────
+const app = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// ── Cloudinary Upload Helper ───────────────────────────────────
+async function uploadToCloudinary(file, folder = 'rc-engine/wife-alliance') {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  fd.append('folder', folder);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: fd });
+  if (!res.ok) throw new Error('Cloudinary upload gagal');
+  const data = await res.json();
+  return data.secure_url;
+}
+
+// ── Toast Helper ───────────────────────────────────────────────
+const Toast = Swal.mixin({
+  toast: true, position: 'top-end', showConfirmButton: false,
+  timer: 2500, timerProgressBar: true,
+  background: '#0A1020', color: '#E8F4FF',
+  customClass: { popup: 'colored-toast' }
+});
+function toast(icon, title, text = '') {
+  if (text) {
+    Swal.fire({ icon, title, text, background: '#0A1020', color: '#E8F4FF', confirmButtonColor: '#6B3FD4' });
+  } else {
+    Toast.fire({ icon, title });
+  }
+}
+function toastLoading(title) {
+  Swal.fire({ title, background: '#0A1020', color: '#E8F4FF', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════════════
+let currentUser = null;
+
+onAuthStateChanged(auth, user => {
+  currentUser = user;
+  window.currentUser = user; // expose for triple-tap check
+  const emailEl = document.getElementById('admin-user-email');
+  if (emailEl) emailEl.textContent = user ? user.email : '—';
+  if (!user && APP.page === 'admin') navigate('dashboard');
+});
+
+window._authLogin = async function() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  if (!email || !pass) { toast('warning', 'Lengkapi Email & Password'); return; }
+  toastLoading('Memverifikasi...');
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+    Swal.close();
+    navigate('admin');
+    toast('success', 'Login Berhasil ✅');
+  } catch (e) {
+    toast('error', 'Login Gagal', e.code === 'auth/wrong-password' ? 'Password salah.' : e.code === 'auth/user-not-found' ? 'Email tidak ditemukan.' : e.message);
+  }
+};
+
+window._authLogout = async function() {
+  const c = await Swal.fire({ title: 'Logout?', text: 'Kamu akan keluar dari panel admin.', icon: 'question', showCancelButton: true, confirmButtonText: 'Ya, Logout', cancelButtonText: 'Batal', background: '#0A1020', color: '#E8F4FF', confirmButtonColor: '#6B3FD4' });
+  if (c.isConfirmed) { await signOut(auth); navigate('dashboard'); }
+};
+
+window._changePassword = async function() {
+  const old = document.getElementById('sec-old').value;
+  const nw = document.getElementById('sec-new').value;
+  const cf = document.getElementById('sec-confirm').value;
+  if (nw.length < 6) { toast('warning', 'Password min 6 karakter'); return; }
+  if (nw !== cf) { toast('error', 'Konfirmasi password tidak cocok'); return; }
+  toastLoading('Mengubah password...');
+  try {
+    const cred = EmailAuthProvider.credential(currentUser.email, old);
+    await reauthenticateWithCredential(currentUser, cred);
+    await updatePassword(currentUser, nw);
+    Swal.close(); toast('success', 'Password berhasil diubah!');
+    ['sec-old','sec-new','sec-confirm'].forEach(id => document.getElementById(id).value = '');
+  } catch (e) { toast('error', 'Gagal', e.message); }
+};
+
+window._changeEmail = async function() {
+  const email = document.getElementById('sec-email').value.trim();
+  const pass = document.getElementById('sec-email-pass').value;
+  if (!email.includes('@')) { toast('warning', 'Email tidak valid'); return; }
+  toastLoading('Mengubah email...');
+  try {
+    const cred = EmailAuthProvider.credential(currentUser.email, pass);
+    await reauthenticateWithCredential(currentUser, cred);
+    await updateEmail(currentUser, email);
+    Swal.close(); toast('success', 'Email berhasil diubah!');
+  } catch (e) { toast('error', 'Gagal', e.message); }
+};
+
+// ══════════════════════════════════════════════════════════════
+//  FIRESTORE HELPERS
+// ══════════════════════════════════════════════════════════════
+const FS = {
+  add: (col, data) => addDoc(collection(db, col), { ...data, createdAt: serverTimestamp() }),
+  set: (col, id, data) => setDoc(doc(db, col, id), { ...data, updatedAt: serverTimestamp() }, { merge: true }),
+  update: (col, id, data) => updateDoc(doc(db, col, id), { ...data, updatedAt: serverTimestamp() }),
+  delete: (col, id) => deleteDoc(doc(db, col, id)),
+  getAll: async (col, ord = 'createdAt') => {
+    try {
+      const q = query(collection(db, col), orderBy(ord, 'desc'));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch { return []; }
+  },
+  getOne: async (col, id) => {
+    const snap = await getDoc(doc(db, col, id));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  },
+  watch: (col, cb, ord = 'createdAt') => {
+    try {
+      const q = query(collection(db, col), orderBy(ord, 'desc'));
+      return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    } catch (e) { console.warn('watch failed', col, e); return () => {}; }
+  }
+};
+
+// ══════════════════════════════════════════════════════════════
+//  SETTINGS (realtime)
+// ══════════════════════════════════════════════════════════════
+let SETTINGS = { name: 'W.I.F.E AURORA', abbr: 'WIFE', tagline: 'Warriors In Fierce Engagements Aurora', motto: '"Unite, Fight, Conquer — No Retreat, No Surrender"', logo: '', banner: '', ig: '', discord: '', youtube: '', tiktok: '', fb: '', wa: '' };
+
+onSnapshot(doc(db, 'settings', 'main'), snap => {
+  if (snap.exists()) {
+    SETTINGS = { ...SETTINGS, ...snap.data() };
+    if (SETTINGS.roleOrder && Array.isArray(SETTINGS.roleOrder) && SETTINGS.roleOrder.length) {
+      ROLE_ORDER = SETTINGS.roleOrder;
+    }
+    applySettings();
+  }
+});
+
+function applySettings() {
+  document.querySelectorAll('.sq-name').forEach(el => el.textContent = SETTINGS.name);
+  document.querySelectorAll('.sq-abbr').forEach(el => el.textContent = SETTINGS.abbr);
+  document.querySelectorAll('.sq-tagline').forEach(el => el.textContent = SETTINGS.tagline);
+  document.querySelectorAll('.sq-motto').forEach(el => el.textContent = SETTINGS.motto);
+  if (SETTINGS.logo) {
+    document.querySelectorAll('.sq-logo').forEach(el => { el.src = SETTINGS.logo; el.style.display = ''; });
+    // hide placeholder icons when logo is set
+    const navIcon = document.getElementById('nav-logo-icon');
+    if (navIcon) navIcon.style.display = 'none';
+    const dashPh = document.getElementById('dash-logo-placeholder');
+    if (dashPh) dashPh.style.display = 'none';
+  }
+  if (SETTINGS.banner) document.querySelectorAll('.sq-banner').forEach(el => { el.src = SETTINGS.banner; el.style.display = ''; });
+  // update footer social links
+  const links = {
+    'footer-ig': SETTINGS.ig ? (SETTINGS.ig.startsWith('http') ? SETTINGS.ig : 'https://instagram.com/' + SETTINGS.ig.replace('@','')) : '#',
+    'footer-discord': SETTINGS.discord ? (SETTINGS.discord.startsWith('http') ? SETTINGS.discord : 'https://discord.gg/' + SETTINGS.discord) : '#',
+    'footer-tt': SETTINGS.tiktok ? (SETTINGS.tiktok.startsWith('http') ? SETTINGS.tiktok : 'https://tiktok.com/@' + SETTINGS.tiktok.replace('@','')) : '#'
+  };
+  for (const [id, href] of Object.entries(links)) {
+    const el = document.getElementById(id);
+    if (el) { el.href = href; if (href !== '#') el.target = '_blank'; }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════════════
+async function loadDashboard() {
+  showSkeleton('dash-roster-preview');
+  showSkeleton('dash-schedule-preview');
+  showSkeleton('dash-ann-preview');
+
+  const [roster, schedule, ann] = await Promise.all([
+    FS.getAll('roster', 'joinDate'),
+    FS.getAll('schedule', 'date'),
+    FS.getAll('announcement', 'createdAt')
+  ]);
+
+  // stats
+  const main = roster.filter(r => r.status === 'Inti').length;
+  document.getElementById('dash-total-player').textContent = roster.length;
+  document.getElementById('dash-main-player').textContent = main;
+  document.getElementById('dash-upcoming').textContent = schedule.filter(s => s.status === 'upcoming').length;
+  document.getElementById('dash-achievement').textContent = achData.length;
+
+  // roster preview
+  const rp = document.getElementById('dash-roster-preview');
+  if (!roster.length) { rp.innerHTML = emptyState('Belum ada roster'); }
+  else {
+    rp.innerHTML = roster.slice(0, 6).map(r => `
+      <div class="flex items-center gap-3 p-3 rounded-lg" style="background:rgba(0,150,200,0.07);border:1px solid rgba(0,229,255,0.15)">
+        <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0" style="background:rgba(0,150,200,0.2);border:1px solid rgba(0,229,255,0.3)">
+          ${r.photo ? `<img src="${r.photo}" class="w-full h-full object-cover" loading="lazy"/>` : `<div class="w-full h-full flex items-center justify-center text-lg">👤</div>`}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-sm truncate" style="color:var(--text-primary)">${r.nickname||r.name}</div>
+          <div class="text-xs truncate" style="color:var(--text-muted)">${r.role}</div>
+        </div>
+        <span class="status-badge ${statusClass(r.status)}">${r.status}</span>
+      </div>`).join('');
+  }
+
+  // schedule preview
+  const upcoming = schedule.filter(s => s.status === 'upcoming').sort((a, b) => {
+    const da = a.date ? new Date(`${a.date}T${a.time || '00:00'}:00`).getTime() : Infinity;
+    const db_ = b.date ? new Date(`${b.date}T${b.time || '00:00'}:00`).getTime() : Infinity;
+    return da - db_;
+  }).slice(0, 3);
+  const sp = document.getElementById('dash-schedule-preview');
+  if (!upcoming.length) { sp.innerHTML = emptyState('Tidak ada jadwal mendatang'); }
+  else {
+    sp.innerHTML = upcoming.map(s => `
+      <div class="flex items-center gap-3 p-3 rounded-lg mb-2" style="background:rgba(79,172,254,0.05);border:1px solid rgba(79,172,254,0.15)">
+        <div class="flex-shrink-0 text-center" style="min-width:44px">
+          <div class="text-xs orbitron" style="color:var(--gold)">${s.type?.toUpperCase()}</div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-sm truncate">${s.title || s.opponent}</div>
+          <div class="text-xs" style="color:var(--text-muted)">${s.date} · ${s.time}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // announcement preview
+  const anp = document.getElementById('dash-ann-preview');
+  if (!ann.length) { anp.innerHTML = emptyState('Tidak ada pengumuman'); }
+  else {
+    anp.innerHTML = ann.slice(0, 3).map(a => `
+      <div class="p-3 rounded-lg mb-2" style="background:rgba(0,150,200,0.07);border-left:3px solid ${priColor(a.priority)}">
+        <div class="flex items-start justify-between gap-2">
+          <div class="font-semibold text-sm">${a.title}</div>
+          <span class="text-xs orbitron flex-shrink-0" style="color:${priColor(a.priority)}">${a.priority||'NORMAL'}</span>
+        </div>
+        <div class="text-xs mt-1 leading-relaxed" style="color:var(--text-secondary)">${a.content}</div>
+        <div class="text-xs mt-1" style="color:var(--text-muted)">${fmtDate(a.date)}</div>
+      </div>`).join('');
+  }
+
+}
+
+function priColor(p) {
+  return p === 'URGENT' ? '#F87171' : p === 'PENTING' ? '#FDE047' : 'rgba(0,229,255,0.6)';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+let mgmtData = [];
+FS.watch('management', data => {
+  mgmtData = data;
+  if (APP.page === 'management') renderManagement(mgmtData);
+  if (APP.page === 'admin' && APP.adminSection === 'management') renderAdminMgmt(mgmtData);
+});
+
+const MGMT_ORDER = ['Owner','Co-Owner','Manager','Co-Manager','Coach','Head Coach','Assistant Coach','Captain','Vice Captain'];
+function sortMgmt(data) {
+  return [...data].sort((a, b) => {
+    const ai = MGMT_ORDER.findIndex(p => (a.position||'').toLowerCase().includes(p.toLowerCase()));
+    const bi = MGMT_ORDER.findIndex(p => (b.position||'').toLowerCase().includes(p.toLowerCase()));
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+}
+
+function renderManagement(data) {
+  const el = document.getElementById('management-grid');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada data management'); return; }
+  el.innerHTML = sortMgmt(data).map(m => `
+    <div class="glass p-5 text-center" data-aos="fade-up">
+      <!-- Avatar 16:9 -->
+      <div style="width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;margin:0 auto 14px;border:2px solid var(--border-gold);background:rgba(0,150,200,0.15)">
+        ${m.photo
+          ? `<img src="${m.photo}" style="width:100%;height:100%;object-fit:cover" loading="lazy"/>`
+          : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:3rem">👤</div>`}
+      </div>
+      <div class="orbitron font-black text-base gradient-text-gold">${m.name}</div>
+      <div class="inline-block px-3 py-1 rounded-full text-xs orbitron font-bold mt-1 mb-2" style="background:rgba(79,172,254,0.15);color:var(--gold);border:1px solid rgba(79,172,254,0.3)">${m.position}</div>
+      ${m.bio ? `<p class="text-sm leading-relaxed mb-3" style="color:var(--text-secondary)">${m.bio}</p>` : ''}
+      <div class="flex gap-2 justify-center flex-wrap">
+        ${m.wa ? `<a href="https://wa.me/${m.wa.replace(/\D/g,'')}" target="_blank"
+          style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#25D366;font-size:0.75rem;font-family:'Orbitron',sans-serif;font-weight:700;text-decoration:none;transition:all 0.2s"
+          onmouseover="this.style.background='rgba(37,211,102,0.25)'" onmouseout="this.style.background='rgba(37,211,102,0.12)'">
+          <i class="fab fa-whatsapp" style="font-size:1.1rem"></i> HUBUNGI
+        </a>` : ''}
+        ${m.ig ? `<a href="https://instagram.com/${m.ig.replace('@','')}" target="_blank" class="social-mini"><i class="fab fa-instagram"></i></a>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ── Admin: Management CRUD ─────────────────────────────────────
+window._openMgmtForm = function(id = null) {
+  const m = id ? mgmtData.find(x => x.id === id) : {};
+  const w = Math.min(480, window.innerWidth - 24) + 'px';
+  Swal.fire({
+    title: id ? 'Edit Management' : 'Tambah Management',
+    background: '#0A1020', color: '#E8F4FF', width: w,
+    html: `
+      <div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+        <div><label class="swal-label">NAMA LENGKAP</label>
+          <input id="m-name" class="swal-input" placeholder="Nama Lengkap" value="${m?.name||''}"/></div>
+        <div><label class="swal-label">JABATAN</label>
+          <select id="m-pos" class="swal-input">
+            ${['Owner','Manager','Kapten','Wakil Kapten','Coach','Analyst'].map(p=>`<option ${m?.position===p?'selected':''}>${p}</option>`).join('')}
+          </select></div>
+        <div><label class="swal-label">BIO SINGKAT</label>
+          <textarea id="m-bio" class="swal-input" placeholder="Bio singkat" rows="2">${m?.bio||''}</textarea></div>
+        <div><label class="swal-label"><i class="fab fa-whatsapp" style="color:#25D366"></i> WHATSAPP</label>
+          <input id="m-wa" class="swal-input" placeholder="628xxxxxxxxxx" value="${m?.wa||''}"/></div>
+        <div><label class="swal-label"><i class="fab fa-instagram" style="color:#E1306C"></i> INSTAGRAM</label>
+          <input id="m-ig" class="swal-input" placeholder="@nickname" value="${m?.ig||''}"/></div>
+        <div><label class="swal-label">FOTO (16:9 — Upload ke Cloudinary)</label>
+          <input id="m-photo-file" type="file" accept="image/*" class="swal-input" style="padding:6px"/>
+          <div id="m-photo-preview-wrap" style="margin-top:8px;${m?.photo?'':'display:none'}">
+            <img id="m-photo-preview" src="${m?.photo||''}" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;border:1px solid rgba(0,229,255,0.4)"/>
+          </div>
+        </div>
+      </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    didOpen: () => {
+      document.getElementById('m-photo-file').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const wrap = document.getElementById('m-photo-preview-wrap');
+          const img = document.getElementById('m-photo-preview');
+          if (wrap && img) { img.src = ev.target.result; wrap.style.display = ''; }
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+    preConfirm: async () => {
+      const data = {
+        name: document.getElementById('m-name').value.trim(),
+        position: document.getElementById('m-pos').value,
+        bio: document.getElementById('m-bio').value.trim(),
+        wa: document.getElementById('m-wa').value.trim().replace(/\D/g,''),
+        ig: document.getElementById('m-ig').value.trim(),
+        photo: m?.photo || ''
+      };
+      if (!data.name) { Swal.showValidationMessage('Nama wajib diisi'); return false; }
+      const file = document.getElementById('m-photo-file').files[0];
+      if (file) {
+        Swal.showLoading();
+        try {
+          data.photo = await uploadToCloudinary(file, 'rc-engine/wife-alliance/management');
+        } catch(e) {
+          Swal.showValidationMessage('Upload foto gagal: ' + e.message);
+          return false;
+        }
+      }
+      return data;
+    }
+  }).then(async r => {
+    if (!r.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('management', id, r.value);
+      else await FS.add('management', r.value);
+      Swal.close(); toast('success', id ? 'Data diperbarui!' : 'Data ditambahkan!');
+    } catch (e) { Swal.close(); toast('error', 'Gagal simpan', e.message); }
+  });
+};
+
+window._deleteMgmt = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus data ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('management', id);
+  toast('success', 'Data dihapus');
+};
+
+function renderAdminMgmt(data) {
+  const el = document.getElementById('admin-mgmt-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada data'); return; }
+  el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr style="border-bottom:1px solid rgba(0,229,255,0.2)">
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">FOTO</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">NAMA</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">JABATAN</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">KONTAK</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">AKSI</th>
+  </tr></thead><tbody>
+  ${sortMgmt(data).map(m => `<tr style="border-bottom:1px solid rgba(0,229,255,0.1)">
+    <td class="py-2 px-3">
+      <div style="width:56px;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:rgba(0,150,200,0.2)">
+        ${m.photo ? `<img src="${m.photo}" style="width:100%;height:100%;object-fit:cover"/>` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">👤</div>'}
+      </div>
+    </td>
+    <td class="py-2 px-3"><div class="font-semibold">${m.name}</div></td>
+    <td class="py-2 px-3"><span class="text-xs orbitron px-2 py-0.5 rounded" style="background:rgba(79,172,254,0.1);color:var(--gold)">${m.position}</span></td>
+    <td class="py-2 px-3">
+      ${m.wa ? `<a href="https://wa.me/${m.wa}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.3);color:#25D366;font-size:0.65rem;font-family:'Orbitron',sans-serif;font-weight:700;text-decoration:none"><i class="fab fa-whatsapp"></i> WA</a>` : '<span style="color:var(--text-muted);font-size:0.75rem">—</span>'}
+    </td>
+    <td class="py-2 px-3"><div class="flex gap-2">
+      <button onclick="_openMgmtForm('${m.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+      <button onclick="_deleteMgmt('${m.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+    </div></td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ROSTER
+// ══════════════════════════════════════════════════════════════
+let rosterData = [];
+let rosterFilter = { role: 'all', status: 'all', q: '' };
+
+FS.watch('roster', data => {
+  rosterData = data;
+  if (APP.page === 'roster') renderRoster();
+  if (APP.page === 'admin' && APP.adminSection === 'roster') renderAdminRoster(data);
+  // update overview & dashboard stats live
+  const ovEl = document.getElementById('ov-roster');
+  if (ovEl) ovEl.textContent = data.length;
+});
+
+let rosterViewMode = 'grid'; // 'grid' | 'list'
+
+window._rosterView = function(mode) {
+  rosterViewMode = mode;
+  // toggle button styles
+  const gBtn = document.getElementById('roster-view-grid');
+  const lBtn = document.getElementById('roster-view-list');
+  if (gBtn && lBtn) {
+    gBtn.style.background = mode === 'grid' ? 'rgba(0,150,200,0.3)' : 'transparent';
+    gBtn.style.borderColor = mode === 'grid' ? 'rgba(0,229,255,0.5)' : 'rgba(0,229,255,0.2)';
+    gBtn.style.color = mode === 'grid' ? 'var(--purple-neon)' : 'var(--text-muted)';
+    lBtn.style.background = mode === 'list' ? 'rgba(0,150,200,0.3)' : 'transparent';
+    lBtn.style.borderColor = mode === 'list' ? 'rgba(0,229,255,0.5)' : 'rgba(0,229,255,0.2)';
+    lBtn.style.color = mode === 'list' ? 'var(--purple-neon)' : 'var(--text-muted)';
+  }
+  renderRoster();
+};
+
+let ROLE_ORDER = ['EXP Lane','Jungler','Mid Lane','Gold Lane','Roamer'];
+let STATUS_ORDER = ['Inti','Cadangan','Trial','Inactive'];
+
+function renderRoster() {
+  const el = document.getElementById('roster-grid');
+  if (!el) return;
+  let data = [...rosterData];
+  const q = rosterFilter.q.toLowerCase();
+  if (q) data = data.filter(r => (r.name||'').toLowerCase().includes(q) || (r.nickname||'').toLowerCase().includes(q));
+  if (rosterFilter.role !== 'all') data = data.filter(r => r.role === rosterFilter.role);
+  if (rosterFilter.status !== 'all') data = data.filter(r => r.status === rosterFilter.status);
+
+  // Sort by status group first (Main -> Cadangan -> Trial -> Inactive), then by role within each group
+  data.sort((a, b) => {
+    const asi = STATUS_ORDER.indexOf(a.status);
+    const bsi = STATUS_ORDER.indexOf(b.status);
+    const statusDiff = (asi === -1 ? 99 : asi) - (bsi === -1 ? 99 : bsi);
+    if (statusDiff !== 0) return statusDiff;
+    const ai = ROLE_ORDER.indexOf(a.role);
+    const bi = ROLE_ORDER.indexOf(b.role);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  if (!data.length) { el.innerHTML = emptyState('Tidak ada player ditemukan'); return; }
+
+  if (rosterViewMode === 'grid') {
+    el.className = 'auto-grid-4';
+    el.innerHTML = data.map(r => `
+      <div class="player-card" data-aos="fade-up">
+        <div class="relative">
+          <!-- 16:9 photo, not circular -->
+          <div style="width:100%;aspect-ratio:16/9;overflow:hidden;background:linear-gradient(135deg,rgba(0,150,200,0.25),rgba(79,172,254,0.1))">
+            ${r.photo ? `<img src="${r.photo}" style="width:100%;height:100%;object-fit:cover" loading="lazy"/>` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:3rem">👤</div>`}
+          </div>
+          <div style="position:absolute;top:8px;right:8px"><span class="status-badge ${statusClass(r.status)}">${r.status}</span></div>
+          <div style="position:absolute;bottom:8px;left:8px"><span class="role-badge ${roleClass(r.role)}">${r.role}</span></div>
+        </div>
+        <div class="p-4">
+          <div class="orbitron font-black text-base gradient-text truncate">${r.nickname||r.name}</div>
+          <div class="text-xs mb-2" style="color:var(--text-muted)">${r.name}</div>
+          <div class="flex flex-col gap-1 text-xs" style="color:var(--text-secondary)">
+            <div><i class="fas fa-gamepad mr-1" style="color:var(--gold)"></i>${r.mlId||'-'}</div>
+            <div><i class="fas fa-star mr-1" style="color:var(--gold)"></i>${r.heroSignature||r.mainHero||'-'}</div>
+            <div><i class="fas fa-calendar mr-1" style="color:var(--purple-neon)"></i>${r.joinDate||'-'}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  } else {
+    // LIST VIEW
+    el.className = 'flex flex-col gap-2';
+    el.innerHTML = data.map(r => `
+      <div class="glass flex gap-3 p-3 items-center" data-aos="fade-up" style="border-radius:10px">
+        <!-- Square thumb -->
+        <div style="width:72px;height:72px;border-radius:8px;overflow:hidden;flex-shrink:0;background:rgba(0,150,200,0.2);border:1px solid rgba(0,229,255,0.2)">
+          ${r.photo ? `<img src="${r.photo}" style="width:100%;height:100%;object-fit:cover" loading="lazy"/>` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem">👤</div>`}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex gap-2 items-center flex-wrap mb-0.5">
+            <span class="orbitron font-black text-sm gradient-text">${r.nickname||r.name}</span>
+            <span class="status-badge ${statusClass(r.status)}" style="font-size:0.6rem">${r.status}</span>
+          </div>
+          <div class="text-xs mb-1" style="color:var(--text-muted)">${r.name}</div>
+          <div class="flex gap-3 text-xs flex-wrap" style="color:var(--text-secondary)">
+            <span class="role-badge ${roleClass(r.role)}" style="font-size:0.6rem">${r.role}</span>
+            <span><i class="fas fa-gamepad mr-1" style="color:var(--gold)"></i>${r.mlId||'-'}</span>
+            <span><i class="fas fa-star mr-1" style="color:var(--gold)"></i>${r.heroSignature||r.mainHero||'-'}</span>
+          </div>
+        </div>
+        <div class="text-xs orbitron text-right flex-shrink-0" style="color:var(--text-muted)">
+          <div><i class="fas fa-calendar" style="color:var(--purple-neon)"></i></div>
+          <div>${r.joinDate||'-'}</div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+window._rosterSearch = function(v) { rosterFilter.q = v; renderRoster(); };
+window._rosterFilterRole = function(v, btn) {
+  rosterFilter.role = v;
+  document.querySelectorAll('.roster-role-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRoster();
+};
+window._rosterFilterStatus = function(v, btn) {
+  rosterFilter.status = v;
+  document.querySelectorAll('.roster-status-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRoster();
+};
+
+// ── Admin: Roster CRUD ─────────────────────────────────────────
+window._openRosterForm = function(id = null) {
+  const r = id ? rosterData.find(x => x.id === id) : {};
+  const w = Math.min(600, window.innerWidth - 24) + 'px';
+  Swal.fire({
+    title: id ? 'Edit Player' : 'Tambah Player',
+    background: '#0A1020', color: '#E8F4FF', width: w,
+    html: `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;font-family:Rajdhani">
+      <div><label class="swal-label">NAMA LENGKAP</label><input id="r-name" class="swal-input" value="${r?.name||''}"/></div>
+      <div><label class="swal-label">NICKNAME</label><input id="r-nick" class="swal-input" value="${r?.nickname||''}"/></div>
+      <div><label class="swal-label">ROLE</label><select id="r-role" class="swal-input">
+        ${['EXP Lane','Jungler','Mid Lane','Gold Lane','Roamer'].map(v=>`<option ${r?.role===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">STATUS</label><select id="r-status" class="swal-input">
+        ${['Inti','Cadangan','Trial','Inactive'].map(v=>`<option ${r?.status===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">ID MOBILE LEGENDS</label><input id="r-mlid" class="swal-input" value="${r?.mlId||''}"/></div>
+      <div><label class="swal-label">HERO SIGNATURE</label><input id="r-sig" class="swal-input" value="${r?.heroSignature||''}"/></div>
+      <div style="grid-column:1/-1"><label class="swal-label">HERO ANDALAN (pisah koma)</label><input id="r-hero" class="swal-input" value="${r?.mainHero||''}"/></div>
+      <div><label class="swal-label">TANGGAL BERGABUNG</label><input id="r-join" class="swal-input" type="date" value="${r?.joinDate||''}"/></div>
+      <div style="grid-column:1/-1">
+        <label class="swal-label">FOTO PLAYER (16:9 disarankan)</label>
+        <input id="r-photo" type="file" accept="image/*" class="swal-input" style="padding:6px"/>
+        <div id="r-photo-preview-wrap" style="margin-top:8px;${r?.photo?'':'display:none'}">
+          <img id="r-photo-preview" src="${r?.photo||''}" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;border:1px solid rgba(0,229,255,0.4)"/>
+        </div>
+      </div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    didOpen: () => {
+      document.getElementById('r-photo').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const wrap = document.getElementById('r-photo-preview-wrap');
+          const img = document.getElementById('r-photo-preview');
+          if (wrap && img) { img.src = ev.target.result; wrap.style.display = ''; }
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+    preConfirm: async () => {
+      const data = {
+        name: document.getElementById('r-name').value.trim(),
+        nickname: document.getElementById('r-nick').value.trim(),
+        role: document.getElementById('r-role').value,
+        status: document.getElementById('r-status').value,
+        mlId: document.getElementById('r-mlid').value.trim(),
+        heroSignature: document.getElementById('r-sig').value.trim(),
+        mainHero: document.getElementById('r-hero').value.trim(),
+        joinDate: document.getElementById('r-join').value,
+        photo: r?.photo || ''
+      };
+      if (!data.name || !data.nickname) { Swal.showValidationMessage('Nama & Nickname wajib'); return false; }
+      const file = document.getElementById('r-photo').files[0];
+      if (file) {
+        Swal.showLoading();
+        try {
+          data.photo = await uploadToCloudinary(file, 'rc-engine/wife-alliance/roster');
+        } catch(e) { Swal.showValidationMessage('Upload gagal: ' + e.message); return false; }
+      }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('roster', id, res.value);
+      else await FS.add('roster', res.value);
+      Swal.close(); toast('success', id ? 'Player diperbarui!' : 'Player ditambahkan!');
+    } catch (e) { Swal.close(); toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteRoster = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus player ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('roster', id);
+  toast('success', 'Player dihapus');
+};
+
+function renderAdminRoster(data) {
+  const el = document.getElementById('admin-roster-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada roster'); return; }
+  el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr style="border-bottom:1px solid rgba(0,229,255,0.2)">
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">FOTO</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">PLAYER</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">ROLE</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">STATUS</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">HERO</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">AKSI</th>
+  </tr></thead><tbody>
+  ${data.map(r => `<tr style="border-bottom:1px solid rgba(0,229,255,0.08)">
+    <td class="py-2 px-3"><div class="w-9 h-9 rounded-full overflow-hidden" style="background:rgba(0,150,200,0.2)">${r.photo?`<img src="${r.photo}" class="w-full h-full object-cover"/>`:'👤'}</div></td>
+    <td class="py-2 px-3"><div class="font-semibold">${r.nickname||r.name}</div><div class="text-xs" style="color:var(--text-muted)">${r.name}</div></td>
+    <td class="py-2 px-3"><span class="role-badge ${roleClass(r.role)} text-xs">${r.role}</span></td>
+    <td class="py-2 px-3"><span class="status-badge ${statusClass(r.status)}">${r.status}</span></td>
+    <td class="py-2 px-3 text-xs" style="color:var(--text-muted)">${r.heroSignature||'-'}</td>
+    <td class="py-2 px-3"><div class="flex gap-2">
+      <button onclick="_openRosterForm('${r.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+      <button onclick="_deleteRoster('${r.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+    </div></td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  META HERO
+// ══════════════════════════════════════════════════════════════
+let metaData = [];
+let metaFilter = { role: 'all', tier: 'all' };
+
+FS.watch('meta', data => {
+  metaData = data;
+  if (APP.page === 'meta') renderMeta();
+  if (APP.page === 'admin' && APP.adminSection === 'meta') renderAdminMeta(data);
+  const ovEl = document.getElementById('ov-meta');
+  if (ovEl) ovEl.textContent = data.length;
+});
+
+function renderMeta() {
+  const el = document.getElementById('meta-grid');
+  if (!el) return;
+  let data = [...metaData];
+  if (metaFilter.role !== 'all') data = data.filter(m => m.role === metaFilter.role);
+  if (metaFilter.tier !== 'all') data = data.filter(m => m.tier === metaFilter.tier);
+  if (!data.length) { el.innerHTML = emptyState('Tidak ada hero ditemukan'); return; }
+  el.innerHTML = data.map(m => `
+    <div class="meta-card" data-aos="fade-up">
+      <div class="relative w-full" style="aspect-ratio:4/3;overflow:hidden;background:linear-gradient(135deg,rgba(0,150,200,0.2),rgba(79,172,254,0.1))">
+        ${m.photo ? `<img src="${m.photo}" class="w-full h-full object-cover" loading="lazy"/>` : `<div class="w-full h-full flex items-center justify-center text-5xl">⚔️</div>`}
+        <div class="absolute top-2 right-2"><span class="tier-badge ${tierClass(m.tier)}">${m.tier}</span></div>
+        <div class="absolute top-2 left-2"><span class="role-badge ${roleClass(m.role)} text-xs">${m.role}</span></div>
+      </div>
+      <div class="p-4">
+        <div class="orbitron font-bold text-sm truncate">${m.heroName}</div>
+        <div class="text-xs mt-1 mb-2" style="color:var(--text-muted)">${m.status||'Meta'}</div>
+        <div class="flex gap-2 text-xs flex-wrap">
+          ${m.pickPriority ? `<span style="color:#4ADE80"><i class="fas fa-hand-pointer mr-0.5"></i>Pick ${m.pickPriority}</span>` : ''}
+          ${m.banPriority ? `<span style="color:#F87171"><i class="fas fa-ban mr-0.5"></i>Ban ${m.banPriority}</span>` : ''}
+        </div>
+        ${m.notes ? `<div class="text-xs mt-2 leading-relaxed" style="color:var(--text-muted)">${m.notes}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+window._metaFilterRole = function(v, btn) {
+  metaFilter.role = v;
+  document.querySelectorAll('.meta-role-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMeta();
+};
+window._metaFilterTier = function(v, btn) {
+  metaFilter.tier = v;
+  document.querySelectorAll('.meta-tier-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMeta();
+};
+
+window._openMetaForm = function(id = null) {
+  const m = id ? metaData.find(x => x.id === id) : {};
+  Swal.fire({
+    title: id ? 'Edit Hero Meta' : 'Tambah Hero Meta',
+    background: '#0A1020', color: '#E8F4FF', width: '650px',
+    html: `<div class="grid grid-cols-2 gap-3 text-left" style="font-family:Rajdhani">
+      <div class="col-span-2"><label class="swal-label">NAMA HERO</label><input id="m-hname" class="swal-input" value="${m?.heroName||''}"/></div>
+      <div><label class="swal-label">ROLE</label><select id="m-hrole" class="swal-input">
+        ${['EXP Lane','Jungler','Mid Lane','Gold Lane','Roamer'].map(v=>`<option ${m?.role===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">TIER</label><select id="m-htier" class="swal-input">
+        ${['S+','S','A','B','C'].map(v=>`<option ${m?.tier===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">STATUS</label><select id="m-hstatus" class="swal-input">
+        ${['Meta','Situasional','Counter Pick'].map(v=>`<option ${m?.status===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">TINGKAT KESULITAN</label><select id="m-hdiff" class="swal-input">
+        ${['Easy','Medium','Hard','Very Hard'].map(v=>`<option ${m?.difficulty===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">PRIORITAS PICK (1-10)</label><input id="m-hpick" class="swal-input" type="number" min="1" max="10" value="${m?.pickPriority||''}"/></div>
+      <div><label class="swal-label">PRIORITAS BAN (1-10)</label><input id="m-hban" class="swal-input" type="number" min="1" max="10" value="${m?.banPriority||''}"/></div>
+      <div class="col-span-2"><label class="swal-label">BUILD ITEM</label><input id="m-hbuild" class="swal-input" value="${m?.build||''}" placeholder="Contoh: Calamity Reaper, Clock of Destiny..."/></div>
+      <div><label class="swal-label">EMBLEM</label><input id="m-hemblem" class="swal-input" value="${m?.emblem||''}"/></div>
+      <div><label class="swal-label">BATTLE SPELL</label><input id="m-hspell" class="swal-input" value="${m?.spell||''}"/></div>
+      <div class="col-span-2"><label class="swal-label">CATATAN</label><textarea id="m-hnotes" class="swal-input" rows="2">${m?.notes||''}</textarea></div>
+      <div class="col-span-2"><label class="swal-label">FOTO HERO</label><input id="m-hphoto" type="file" accept="image/*" class="swal-input" style="padding:6px"/>
+        ${m?.photo?`<img src="${m.photo}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;margin-top:4px"/>`:''}</div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: async () => {
+      const data = {
+        heroName: document.getElementById('m-hname').value.trim(),
+        role: document.getElementById('m-hrole').value,
+        tier: document.getElementById('m-htier').value,
+        status: document.getElementById('m-hstatus').value,
+        difficulty: document.getElementById('m-hdiff').value,
+        pickPriority: document.getElementById('m-hpick').value,
+        banPriority: document.getElementById('m-hban').value,
+        build: document.getElementById('m-hbuild').value.trim(),
+        emblem: document.getElementById('m-hemblem').value.trim(),
+        spell: document.getElementById('m-hspell').value.trim(),
+        notes: document.getElementById('m-hnotes').value.trim(),
+        photo: m?.photo || ''
+      };
+      if (!data.heroName) { Swal.showValidationMessage('Nama hero wajib diisi'); return false; }
+      const file = document.getElementById('m-hphoto').files[0];
+      if (file) { Swal.showLoading(); data.photo = await uploadToCloudinary(file, 'wife-alliance/meta'); }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('meta', id, res.value);
+      else await FS.add('meta', res.value);
+      Swal.close(); toast('success', id ? 'Hero diperbarui!' : 'Hero ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteMeta = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus hero ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('meta', id);
+  toast('success', 'Hero dihapus');
+};
+
+function renderAdminMeta(data) {
+  const el = document.getElementById('admin-meta-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada hero meta'); return; }
+  el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr style="border-bottom:1px solid rgba(0,229,255,0.2)">
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">HERO</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">ROLE</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">TIER</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">STATUS</th>
+    <th class="text-left py-2 px-3 orbitron text-xs" style="color:var(--text-muted)">AKSI</th>
+  </tr></thead><tbody>
+  ${data.map(m => `<tr style="border-bottom:1px solid rgba(0,229,255,0.08)">
+    <td class="py-2 px-3 font-semibold">${m.heroName}</td>
+    <td class="py-2 px-3"><span class="role-badge ${roleClass(m.role)} text-xs">${m.role}</span></td>
+    <td class="py-2 px-3"><span class="tier-badge ${tierClass(m.tier)}">${m.tier}</span></td>
+    <td class="py-2 px-3 text-xs" style="color:var(--text-muted)">${m.status}</td>
+    <td class="py-2 px-3"><div class="flex gap-2">
+      <button onclick="_openMetaForm('${m.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+      <button onclick="_deleteMeta('${m.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+    </div></td>
+  </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCHEDULE
+// ══════════════════════════════════════════════════════════════
+let scheduleData = [];
+let scheduleFilter = 'all';
+
+FS.watch('schedule', data => {
+  scheduleData = data;
+  if (APP.page === 'schedule') renderSchedule();
+  if (APP.page === 'admin' && APP.adminSection === 'schedule') renderAdminSchedule(data);
+  const ovEl = document.getElementById('ov-sch');
+  if (ovEl) ovEl.textContent = data.filter(s => s.status === 'upcoming').length;
+  if (typeof updateLiveBanner === 'function') updateLiveBanner();
+});
+
+// ══════════════════════════════════════════════════════════════
+//  LIVE CLOCK + COUNTDOWN BANNER (header)
+// ══════════════════════════════════════════════════════════════
+const HARI_ID = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+const BULAN_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+function getNextEvent() {
+  const now = new Date();
+  const upcoming = scheduleData
+    .filter(s => s.status === 'upcoming' && s.date)
+    .map(s => {
+      const dt = new Date(`${s.date}T${s.time || '00:00'}:00`);
+      return { ...s, _dt: dt };
+    })
+    .filter(s => !isNaN(s._dt.getTime()) && s._dt.getTime() >= now.getTime() - 60000)
+    .sort((a, b) => a._dt - b._dt);
+  return upcoming[0] || null;
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return 'Dimulai!';
+  const totalSec = Math.floor(ms / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (d > 0) return `${d}h ${h}j ${m}m`;
+  if (h > 0) return `${h}j ${m}m ${s}d`;
+  return `${m}m ${s}d`;
+}
+
+function updateLiveBanner() {
+  const now = new Date();
+  const timeEl = document.getElementById('lb-time');
+  const dateEl = document.getElementById('lb-date');
+  if (timeEl) timeEl.textContent = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  if (dateEl) dateEl.textContent = `${HARI_ID[now.getDay()]}, ${now.getDate()} ${BULAN_ID[now.getMonth()]} ${now.getFullYear()}`;
+
+  const wrap = document.getElementById('lb-countdown-wrap');
+  const divider = document.getElementById('lb-divider');
+  const cdLabel = document.getElementById('lb-cd-label');
+  const cdTime = document.getElementById('lb-cd-time');
+  if (!wrap || !cdTime) return;
+
+  const next = getNextEvent();
+  if (!next) {
+    wrap.style.display = 'none';
+    if (divider) divider.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  if (divider) divider.style.display = 'block';
+  const diff = next._dt.getTime() - now.getTime();
+  cdLabel.innerHTML = `<i class="fas fa-hourglass-half mr-1"></i>${(next.title || next.opponent || 'EVENT').toUpperCase().slice(0, 18)}`;
+  cdTime.textContent = formatCountdown(diff);
+}
+
+setInterval(updateLiveBanner, 1000);
+document.addEventListener('DOMContentLoaded', updateLiveBanner);
+updateLiveBanner();
+
+function renderSchedule() {
+  const el = document.getElementById('schedule-list');
+  if (!el) return;
+  let data = [...scheduleData];
+  if (scheduleFilter !== 'all') {
+    if (['scrim','tournament','latihan','meeting'].includes(scheduleFilter)) data = data.filter(s => s.type === scheduleFilter);
+    else data = data.filter(s => s.status === scheduleFilter);
+  }
+  data.sort((a, b) => {
+    const da = a.date ? new Date(`${a.date}T${a.time || '00:00'}:00`).getTime() : Infinity;
+    const db_ = b.date ? new Date(`${b.date}T${b.time || '00:00'}:00`).getTime() : Infinity;
+    if (isNaN(da) && isNaN(db_)) return 0;
+    if (isNaN(da)) return 1;
+    if (isNaN(db_)) return -1;
+    return da - db_;
+  });
+  if (!data.length) { el.innerHTML = emptyState('Tidak ada jadwal ditemukan'); return; }
+  el.innerHTML = data.map(s => `
+    <div class="glass p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center" data-aos="fade-up">
+      <div class="flex-shrink-0 text-center px-4 py-2 rounded-lg" style="background:rgba(0,150,200,0.1);border:1px solid rgba(0,229,255,0.2);min-width:72px">
+        <div class="orbitron font-black text-lg gradient-text">${s.date ? s.date.split('-')[2]||s.date.split(' ')[0] : '-'}</div>
+        <div class="text-xs orbitron" style="color:var(--text-muted)">${s.date ? monthShort(s.date) : ''}</div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-1">
+          <span class="text-xs orbitron px-2 py-0.5 rounded" style="background:rgba(79,172,254,0.1);color:var(--gold)">${s.type?.toUpperCase()}</span>
+          <span class="schedule-status ${scheduleStatusClass(s.status)}">${s.status}</span>
+        </div>
+        <div class="font-bold text-base">${s.title||s.opponent}</div>
+        ${s.opponent && s.title ? `<div class="text-sm" style="color:var(--text-secondary)">vs ${s.opponent}</div>` : ''}
+        <div class="flex gap-4 mt-1 text-xs flex-wrap" style="color:var(--text-muted)">
+          <span><i class="fas fa-clock mr-1" style="color:var(--gold)"></i>${s.time||'-'} WIB</span>
+          ${s.location ? `<span><i class="fas fa-map-marker-alt mr-1" style="color:var(--purple-neon)"></i>${s.location}</span>` : ''}
+        </div>
+        ${s.notes ? `<div class="text-xs mt-1" style="color:var(--text-muted)"><i class="fas fa-sticky-note mr-1"></i>${s.notes}</div>` : ''}
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        ${s.score ? `<div class="text-center"><div class="orbitron font-black text-xl ${s.result==='win'?'text-green-400':'text-red-400'}">${s.score}</div><div class="text-xs orbitron" style="color:var(--text-muted)">${s.result?.toUpperCase()}</div></div>` : ''}
+        ${s.opponentWa ? `<a href="https://wa.me/${s.opponentWa}" target="_blank" title="Hubungi Tim Lawan via WhatsApp"
+          style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.35);color:#25D366;font-size:0.75rem;font-family:'Orbitron',sans-serif;font-weight:700;text-decoration:none;transition:all 0.25s"
+          onmouseover="this.style.background='rgba(37,211,102,0.25)'" onmouseout="this.style.background='rgba(37,211,102,0.12)'">
+          <i class="fab fa-whatsapp" style="font-size:1rem"></i> WA LAWAN
+        </a>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+window._scheduleFilter = function(v, btn) {
+  scheduleFilter = v;
+  document.querySelectorAll('.sch-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSchedule();
+};
+
+window._openScheduleForm = function(id = null) {
+  const s = id ? scheduleData.find(x => x.id === id) : {};
+  Swal.fire({
+    title: id ? 'Edit Jadwal' : 'Tambah Jadwal',
+    background: '#0A1020', color: '#E8F4FF', width: '560px',
+    html: `<div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+      <div><label class="swal-label">JUDUL / NAMA EVENT</label><input id="s-title" class="swal-input" value="${s?.title||''}" placeholder="Contoh: Scrim vs Shadow Wolf"/></div>
+      <div><label class="swal-label">LAWAN</label><input id="s-opp" class="swal-input" value="${s?.opponent||''}" placeholder="Nama squad lawan (opsional)"/></div>
+      <div><label class="swal-label"><i class="fab fa-whatsapp" style="color:#25D366"></i> NO WA TIM LAWAN</label><input id="s-oppwa" class="swal-input" value="${s?.opponentWa||''}" placeholder="628xxxxxxxxxx (tanpa +)"/></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="swal-label">JENIS</label><select id="s-type" class="swal-input">
+          ${['Scrim','Tournament','Latihan','Meeting'].map(v=>`<option ${s?.type?.toLowerCase()===v.toLowerCase()?'selected':''}>${v}</option>`).join('')}
+        </select></div>
+        <div><label class="swal-label">STATUS</label><select id="s-status" class="swal-input">
+          ${['upcoming','berlangsung','selesai'].map(v=>`<option ${s?.status===v?'selected':''}>${v}</option>`).join('')}
+        </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="swal-label">TANGGAL</label><input id="s-date" class="swal-input" type="date" value="${s?.date||''}"/></div>
+        <div><label class="swal-label">JAM</label><input id="s-time" class="swal-input" type="time" value="${s?.time||''}"/></div>
+      </div>
+      <div><label class="swal-label">LOKASI</label><input id="s-loc" class="swal-input" value="${s?.location||''}" placeholder="Online / Discord / dll"/></div>
+      <div><label class="swal-label">CATATAN</label><textarea id="s-notes" class="swal-input" rows="2">${s?.notes||''}</textarea></div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: () => {
+      const data = {
+        title: document.getElementById('s-title').value.trim(),
+        opponent: document.getElementById('s-opp').value.trim(),
+        opponentWa: document.getElementById('s-oppwa').value.trim().replace(/\D/g,''),
+        type: document.getElementById('s-type').value.toLowerCase(),
+        status: document.getElementById('s-status').value,
+        date: document.getElementById('s-date').value,
+        time: document.getElementById('s-time').value,
+        location: document.getElementById('s-loc').value.trim(),
+        notes: document.getElementById('s-notes').value.trim()
+      };
+      if (!data.title) { Swal.showValidationMessage('Judul wajib diisi'); return false; }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('schedule', id, res.value);
+      else await FS.add('schedule', res.value);
+      Swal.close(); toast('success', id ? 'Jadwal diperbarui!' : 'Jadwal ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteSchedule = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus jadwal ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('schedule', id);
+  toast('success', 'Jadwal dihapus');
+};
+
+function renderAdminSchedule(data) {
+  const el = document.getElementById('admin-schedule-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada jadwal'); return; }
+  const sorted = [...data].sort((a, b) => {
+    const da = a.date ? new Date(`${a.date}T${a.time || '00:00'}:00`).getTime() : Infinity;
+    const db_ = b.date ? new Date(`${b.date}T${b.time || '00:00'}:00`).getTime() : Infinity;
+    return da - db_;
+  });
+  el.innerHTML = sorted.map(s => `
+    <div class="flex items-center gap-3 p-3 rounded-lg mb-2" style="background:rgba(0,150,200,0.05);border:1px solid rgba(0,229,255,0.1)">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs orbitron px-2 py-0.5 rounded" style="background:rgba(79,172,254,0.1);color:var(--gold)">${s.type?.toUpperCase()}</span>
+          <span class="schedule-status ${scheduleStatusClass(s.status)}">${s.status}</span>
+        </div>
+        <div class="font-semibold text-sm mt-1">${s.title}</div>
+        <div class="text-xs" style="color:var(--text-muted)">${s.date} · ${s.time}</div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="_openScheduleForm('${s.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+        <button onclick="_deleteSchedule('${s.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MATCH HISTORY
+// ══════════════════════════════════════════════════════════════
+let matchData = [];
+let matchFilter = 'all';
+
+FS.watch('match_history', data => {
+  matchData = data;
+  if (APP.page === 'match') renderMatch();
+  if (APP.page === 'admin' && APP.adminSection === 'match') renderAdminMatch(data);
+  // update match record stats bar
+  updateMatchRecord(data);
+});
+
+function updateMatchRecord(data) {
+  const wins = data.filter(m => m.result === 'win').length;
+  const losses = data.filter(m => m.result === 'lose').length;
+  const total = data.length;
+  const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
+  const wrEl = document.getElementById('match-winrate');
+  const wEl = document.getElementById('match-wins');
+  const lEl = document.getElementById('match-losses');
+  const barEl = document.getElementById('match-wr-bar');
+  if (wrEl) wrEl.textContent = wr + '%';
+  if (wEl) wEl.textContent = wins;
+  if (lEl) lEl.textContent = losses;
+  if (barEl) barEl.style.width = wr + '%';
+}
+
+function renderMatch() {
+  const el = document.getElementById('match-list');
+  if (!el) return;
+  let data = [...matchData];
+  if (matchFilter !== 'all') data = data.filter(m => m.type === matchFilter);
+  data.sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : -Infinity;
+    const db_ = b.date ? new Date(b.date).getTime() : -Infinity;
+    return db_ - da;
+  });
+  if (!data.length) { el.innerHTML = emptyState('Belum ada hasil pertandingan'); return; }
+  el.innerHTML = data.map(m => `
+    <div class="glass p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center" data-aos="fade-up">
+      <div class="flex-shrink-0 text-center px-4 py-2 rounded-lg" style="background:rgba(${m.result==='win'?'34,197,94':'239,68,68'},0.1);border:1px solid rgba(${m.result==='win'?'34,197,94':'239,68,68'},0.25);min-width:64px">
+        <div class="orbitron font-black text-lg ${m.result==='win'?'text-green-400':'text-red-400'}">${m.result?.toUpperCase()}</div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="text-xs orbitron px-2 py-0.5 rounded" style="background:rgba(79,172,254,0.1);color:var(--gold)">${m.type?.toUpperCase()}</span>
+          <span class="text-xs" style="color:var(--text-muted)">${fmtDate(m.date)}</span>
+        </div>
+        <div class="font-bold text-base">vs ${m.opponent}</div>
+        ${m.mvp ? `<div class="text-xs mt-0.5" style="color:var(--purple-neon)"><i class="fas fa-star mr-1"></i>MVP: ${m.mvp}</div>` : ''}
+        ${m.notes ? `<div class="text-xs mt-1" style="color:var(--text-muted)">${m.notes}</div>` : ''}
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        <div class="text-center">
+          <div class="orbitron font-black text-2xl gradient-text">${m.score}</div>
+          <div class="text-xs orbitron" style="color:var(--text-muted)">${m.bo||''}</div>
+        </div>
+        ${m.opponentWa ? `<a href="https://wa.me/${m.opponentWa}" target="_blank" title="Hubungi Tim Lawan via WhatsApp"
+          style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.35);color:#25D366;font-size:0.72rem;font-family:'Orbitron',sans-serif;font-weight:700;text-decoration:none;white-space:nowrap;transition:all 0.2s"
+          onmouseover="this.style.background='rgba(37,211,102,0.25)'" onmouseout="this.style.background='rgba(37,211,102,0.12)'">
+          <i class="fab fa-whatsapp" style="font-size:1rem"></i> WA LAWAN
+        </a>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+window._matchFilter = function(v, btn) {
+  matchFilter = v;
+  document.querySelectorAll('.match-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMatch();
+};
+
+window._openMatchForm = function(id = null) {
+  const m = id ? matchData.find(x => x.id === id) : {};
+  const w = Math.min(540, window.innerWidth - 24) + 'px';
+  Swal.fire({
+    title: id ? 'Edit Hasil Match' : 'Tambah Hasil Match',
+    background: '#0A1020', color: '#E8F4FF', width: w,
+    html: `<div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+      <div><label class="swal-label">LAWAN</label><input id="mh-opp" class="swal-input" value="${m?.opponent||''}" placeholder="Nama squad lawan"/></div>
+      <div><label class="swal-label"><i class="fab fa-whatsapp" style="color:#25D366"></i> NO WA TIM LAWAN</label><input id="mh-oppwa" class="swal-input" value="${m?.opponentWa||''}" placeholder="628xxxxxxxxxx (tanpa +)"/></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="swal-label">JENIS</label><select id="mh-type" class="swal-input">
+          ${['Scrim','Tournament'].map(v=>`<option ${m?.type?.toLowerCase()===v.toLowerCase()?'selected':''}>${v}</option>`).join('')}
+        </select></div>
+        <div><label class="swal-label">HASIL</label><select id="mh-result" class="swal-input">
+          ${['win','lose'].map(v=>`<option ${m?.result===v?'selected':''}>${v}</option>`).join('')}
+        </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="swal-label">SKOR</label><input id="mh-score" class="swal-input" value="${m?.score||''}" placeholder="2-1"/></div>
+        <div><label class="swal-label">FORMAT</label><input id="mh-bo" class="swal-input" value="${m?.bo||''}" placeholder="BO3"/></div>
+      </div>
+      <div><label class="swal-label">TANGGAL</label><input id="mh-date" class="swal-input" type="date" value="${m?.date||''}"/></div>
+      <div><label class="swal-label">MVP</label><input id="mh-mvp" class="swal-input" value="${m?.mvp||''}" placeholder="Nickname player"/></div>
+      <div><label class="swal-label">CATATAN</label><textarea id="mh-notes" class="swal-input" rows="2">${m?.notes||''}</textarea></div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: () => {
+      const data = {
+        opponent: document.getElementById('mh-opp').value.trim(),
+        opponentWa: document.getElementById('mh-oppwa').value.trim().replace(/\D/g,''),
+        type: document.getElementById('mh-type').value.toLowerCase(),
+        result: document.getElementById('mh-result').value,
+        score: document.getElementById('mh-score').value.trim(),
+        bo: document.getElementById('mh-bo').value.trim(),
+        date: document.getElementById('mh-date').value,
+        mvp: document.getElementById('mh-mvp').value.trim(),
+        notes: document.getElementById('mh-notes').value.trim()
+      };
+      if (!data.opponent || !data.score) { Swal.showValidationMessage('Lawan & skor wajib diisi'); return false; }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('match_history', id, res.value);
+      else await FS.add('match_history', res.value);
+      Swal.close(); toast('success', id ? 'Match diperbarui!' : 'Match ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteMatch = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus data ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('match_history', id);
+  toast('success', 'Data dihapus');
+};
+
+function renderAdminMatch(data) {
+  const el = document.getElementById('admin-match-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada hasil match'); return; }
+  const sorted = [...data].sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : -Infinity;
+    const db_ = b.date ? new Date(b.date).getTime() : -Infinity;
+    return db_ - da;
+  });
+  el.innerHTML = sorted.map(m => `
+    <div class="flex items-center gap-3 p-3 rounded-lg mb-2" style="background:rgba(0,150,200,0.05);border:1px solid rgba(0,229,255,0.1)">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-1">
+          <span class="text-xs orbitron px-2 py-0.5 rounded" style="background:rgba(79,172,254,0.1);color:var(--gold)">${m.type?.toUpperCase()}</span>
+          <span class="${m.result==='win'?'text-green-400':'text-red-400'} text-xs orbitron font-bold">${m.result?.toUpperCase()}</span>
+          ${m.opponentWa ? `<a href="https://wa.me/${m.opponentWa}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.3);color:#25D366;font-size:0.65rem;font-family:'Orbitron',sans-serif;font-weight:700;text-decoration:none"><i class="fab fa-whatsapp"></i> WA</a>` : ''}
+        </div>
+        <div class="font-semibold text-sm">vs ${m.opponent}</div>
+        <div class="text-xs" style="color:var(--text-muted)">${fmtDate(m.date)} · ${m.score} (${m.bo})</div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="_openMatchForm('${m.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+        <button onclick="_deleteMatch('${m.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ACHIEVEMENT
+// ══════════════════════════════════════════════════════════════
+let achData = [];
+
+FS.watch('achievement', data => {
+  achData = data;
+  if (APP.page === 'achievement') renderAchievement();
+  if (APP.page === 'admin' && APP.adminSection === 'achievement') renderAdminAch(data);
+  const ovEl = document.getElementById('ov-ach');
+  if (ovEl) ovEl.textContent = data.length;
+});
+
+function renderAchievement() {
+  const el = document.getElementById('achievement-grid');
+  if (!el) return;
+  if (!achData.length) { el.innerHTML = emptyState('Belum ada prestasi'); return; }
+  const sorted = [...achData].sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : -Infinity;
+    const db_ = b.date ? new Date(b.date).getTime() : -Infinity;
+    return db_ - da;
+  });
+  el.innerHTML = sorted.map(a => `
+    <div class="ach-card" data-aos="fade-up">
+      <div class="mx-auto mb-4 rounded-xl overflow-hidden" style="border:2px solid rgba(79,172,254,0.4)">
+        ${a.trophyPhoto ? `<img src="${a.trophyPhoto}" style="width:100%;height:auto;display:block" loading="lazy"/>` : `<div class="w-full flex items-center justify-center text-4xl" style="aspect-ratio:1;background:rgba(79,172,254,0.1)">🏆</div>`}
+      </div>
+      <div class="orbitron font-black text-xl gradient-text-gold mb-1">${a.rank}</div>
+      <div class="text-xs orbitron mb-2" style="color:var(--text-muted)">${a.eventName}</div>
+      <div class="text-sm font-semibold mb-1" style="color:var(--text-secondary)">${a.date}</div>
+      ${a.description ? `<p class="text-sm leading-relaxed mt-2" style="color:var(--text-muted)">${a.description}</p>` : ''}
+    </div>`).join('');
+}
+
+window._openAchForm = function(id = null) {
+  const a = id ? achData.find(x => x.id === id) : {};
+  Swal.fire({
+    title: id ? 'Edit Achievement' : 'Tambah Achievement',
+    background: '#0A1020', color: '#E8F4FF', width: '520px',
+    html: `<div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+      <div><label class="swal-label">NAMA PRESTASI / JUARA</label><input id="a-rank" class="swal-input" value="${a?.rank||''}" placeholder="Juara 1 / Runner-Up"/></div>
+      <div><label class="swal-label">NAMA EVENT</label><input id="a-event" class="swal-input" value="${a?.eventName||''}"/></div>
+      <div><label class="swal-label">TANGGAL</label><input id="a-date" class="swal-input" type="date" value="${a?.date||''}"/></div>
+      <div><label class="swal-label">DESKRIPSI</label><textarea id="a-desc" class="swal-input" rows="2">${a?.description||''}</textarea></div>
+      <div><label class="swal-label">FOTO TROPHY</label><input id="a-photo" type="file" accept="image/*" class="swal-input" style="padding:6px"/>
+        ${a?.trophyPhoto?`<img src="${a.trophyPhoto}" style="width:48px;height:48px;object-fit:cover;border-radius:50%;margin-top:4px"/>`:''}</div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: async () => {
+      const data = {
+        rank: document.getElementById('a-rank').value.trim(),
+        eventName: document.getElementById('a-event').value.trim(),
+        date: document.getElementById('a-date').value,
+        description: document.getElementById('a-desc').value.trim(),
+        trophyPhoto: a?.trophyPhoto || ''
+      };
+      if (!data.rank || !data.eventName) { Swal.showValidationMessage('Prestasi & event wajib diisi'); return false; }
+      const file = document.getElementById('a-photo').files[0];
+      if (file) { Swal.showLoading(); data.trophyPhoto = await uploadToCloudinary(file, 'wife-alliance/achievement'); }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('achievement', id, res.value);
+      else await FS.add('achievement', res.value);
+      Swal.close(); toast('success', id ? 'Diperbarui!' : 'Ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteAch = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus prestasi ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('achievement', id);
+  toast('success', 'Dihapus');
+};
+
+function renderAdminAch(data) {
+  const el = document.getElementById('admin-ach-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada achievement'); return; }
+  const sorted = [...data].sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : -Infinity;
+    const db_ = b.date ? new Date(b.date).getTime() : -Infinity;
+    return db_ - da;
+  });
+  el.innerHTML = sorted.map(a => `
+    <div class="flex items-center gap-3 p-3 rounded-lg mb-2" style="background:rgba(79,172,254,0.04);border:1px solid rgba(79,172,254,0.12)">
+      <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0" style="background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.3)">
+        ${a.trophyPhoto?`<img src="${a.trophyPhoto}" class="w-full h-full object-cover"/>`:`<div class="w-full h-full flex items-center justify-center">🏆</div>`}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-sm gradient-text-gold">${a.rank}</div>
+        <div class="text-xs" style="color:var(--text-muted)">${a.eventName} · ${fmtDate(a.date)}</div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="_openAchForm('${a.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+        <button onclick="_deleteAch('${a.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RULES
+// ══════════════════════════════════════════════════════════════
+let rulesData = [];
+
+FS.watch('rules', data => {
+  rulesData = data;
+  if (APP.page === 'rules') renderRules();
+  if (APP.page === 'admin' && APP.adminSection === 'rules') renderAdminRules(data);
+}, 'order');
+
+function renderRules() {
+  const el = document.getElementById('rules-list');
+  if (!el) return;
+  const cats = ['Aturan Squad','Kewajiban','Larangan','Hukuman','Jadwal Wajib'];
+  if (!rulesData.length) { el.innerHTML = emptyState('Belum ada peraturan'); return; }
+  el.innerHTML = cats.map(cat => {
+    const items = rulesData.filter(r => r.category === cat);
+    if (!items.length) return '';
+    return `<div class="mb-8">
+      <h3 class="orbitron font-bold text-sm mb-3 px-1" style="color:var(--gold)">${cat.toUpperCase()}</h3>
+      <div class="flex flex-col gap-2">
+        ${items.map((r, i) => `
+          <div class="rule-item" data-aos="fade-up">
+            <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center orbitron font-bold text-xs" style="background:rgba(0,150,200,0.2);color:var(--purple-neon)">${i+1}</div>
+            <div>
+              <div class="font-semibold text-sm">${r.icon||''} ${r.title}</div>
+              <div class="text-sm mt-0.5 leading-relaxed" style="color:var(--text-secondary)">${r.content}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window._openRulesForm = function(id = null) {
+  const r = id ? rulesData.find(x => x.id === id) : {};
+  Swal.fire({
+    title: id ? 'Edit Peraturan' : 'Tambah Peraturan',
+    background: '#0A1020', color: '#E8F4FF', width: '520px',
+    html: `<div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+      <div><label class="swal-label">KATEGORI</label><select id="rl-cat" class="swal-input">
+        ${['Aturan Squad','Kewajiban','Larangan','Hukuman','Jadwal Wajib'].map(v=>`<option ${r?.category===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+      <div><label class="swal-label">IKON (emoji)</label><input id="rl-icon" class="swal-input" value="${r?.icon||''}" placeholder="⚔️"/></div>
+      <div><label class="swal-label">JUDUL ATURAN</label><input id="rl-title" class="swal-input" value="${r?.title||''}"/></div>
+      <div><label class="swal-label">ISI ATURAN</label><textarea id="rl-content" class="swal-input" rows="3">${r?.content||''}</textarea></div>
+      <div><label class="swal-label">URUTAN (angka)</label><input id="rl-order" class="swal-input" type="number" value="${r?.order||'1'}"/></div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: () => {
+      const data = {
+        category: document.getElementById('rl-cat').value,
+        icon: document.getElementById('rl-icon').value.trim(),
+        title: document.getElementById('rl-title').value.trim(),
+        content: document.getElementById('rl-content').value.trim(),
+        order: parseInt(document.getElementById('rl-order').value) || 1
+      };
+      if (!data.title || !data.content) { Swal.showValidationMessage('Judul & isi wajib diisi'); return false; }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('rules', id, res.value);
+      else await FS.add('rules', res.value);
+      Swal.close(); toast('success', id ? 'Peraturan diperbarui!' : 'Peraturan ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteRule = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus aturan ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('rules', id);
+  toast('success', 'Aturan dihapus');
+};
+
+function renderAdminRules(data) {
+  const el = document.getElementById('admin-rules-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada peraturan'); return; }
+  el.innerHTML = data.map(r => `
+    <div class="flex items-start gap-3 p-3 rounded-lg mb-2" style="background:rgba(0,150,200,0.05);border-left:3px solid rgba(0,229,255,0.3)">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-0.5">
+          <span class="text-xs orbitron px-2 py-0.5 rounded" style="background:rgba(79,172,254,0.1);color:var(--gold)">${r.category}</span>
+        </div>
+        <div class="font-semibold text-sm">${r.icon||''} ${r.title}</div>
+        <div class="text-xs mt-0.5" style="color:var(--text-muted)">${r.content}</div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="_openRulesForm('${r.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+        <button onclick="_deleteRule('${r.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ANNOUNCEMENT
+// ══════════════════════════════════════════════════════════════
+let annData = [];
+
+FS.watch('announcement', data => {
+  annData = data;
+  if (APP.page === 'announcement') renderAnnouncement();
+  if (APP.page === 'admin' && APP.adminSection === 'announcement') renderAdminAnn(data);
+});
+
+function renderAnnouncement() {
+  const el = document.getElementById('announcement-list');
+  if (!el) return;
+  if (!annData.length) { el.innerHTML = emptyState('Belum ada pengumuman'); return; }
+  el.innerHTML = annData.map(a => `
+    <div class="glass p-5 mb-4" style="border-left:3px solid ${priColor(a.priority)}" data-aos="fade-up">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <h3 class="font-bold text-base">${a.title}</h3>
+        <span class="text-xs orbitron px-2 py-0.5 rounded flex-shrink-0" style="background:rgba(${a.priority==='URGENT'?'239,68,68':a.priority==='PENTING'?'234,179,8':'168,85,247'},0.1);color:${priColor(a.priority)}">${a.priority||'NORMAL'}</span>
+      </div>
+      <p class="text-sm leading-relaxed mb-3" style="color:var(--text-secondary)">${a.content}</p>
+      <div class="text-xs" style="color:var(--text-muted)"><i class="fas fa-calendar mr-1"></i>${fmtDate(a.date)}</div>
+    </div>`).join('');
+}
+
+window._openAnnForm = function(id = null) {
+  const a = id ? annData.find(x => x.id === id) : {};
+  Swal.fire({
+    title: id ? 'Edit Pengumuman' : 'Tambah Pengumuman',
+    background: '#0A1020', color: '#E8F4FF', width: '520px',
+    html: `<div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+      <div><label class="swal-label">JUDUL</label><input id="an-title" class="swal-input" value="${a?.title||''}"/></div>
+      <div><label class="swal-label">ISI PENGUMUMAN</label><textarea id="an-content" class="swal-input" rows="4">${a?.content||''}</textarea></div>
+      <div><label class="swal-label">TANGGAL</label><input id="an-date" class="swal-input" type="date" value="${a?.date||''}"/></div>
+      <div><label class="swal-label">PRIORITAS</label><select id="an-pri" class="swal-input">
+        ${['NORMAL','PENTING','URGENT'].map(v=>`<option ${a?.priority===v?'selected':''}>${v}</option>`).join('')}
+      </select></div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: () => {
+      const data = {
+        title: document.getElementById('an-title').value.trim(),
+        content: document.getElementById('an-content').value.trim(),
+        date: document.getElementById('an-date').value,
+        priority: document.getElementById('an-pri').value
+      };
+      if (!data.title || !data.content) { Swal.showValidationMessage('Judul & isi wajib'); return false; }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('announcement', id, res.value);
+      else await FS.add('announcement', res.value);
+      Swal.close(); toast('success', id ? 'Diperbarui!' : 'Ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteAnn = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus pengumuman ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('announcement', id);
+  toast('success', 'Dihapus');
+};
+
+function renderAdminAnn(data) {
+  const el = document.getElementById('admin-ann-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada pengumuman'); return; }
+  el.innerHTML = data.map(a => `
+    <div class="flex items-start gap-3 p-3 rounded-lg mb-2" style="background:rgba(0,150,200,0.05);border-left:3px solid ${priColor(a.priority)}">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-xs orbitron px-2 py-0.5 rounded" style="color:${priColor(a.priority)}">${a.priority||'NORMAL'}</span>
+          <span class="text-xs" style="color:var(--text-muted)">${fmtDate(a.date)}</span>
+        </div>
+        <div class="font-semibold text-sm">${a.title}</div>
+        <div class="text-xs mt-0.5" style="color:var(--text-muted)">${a.content.substring(0,80)}${a.content.length>80?'...':''}</div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="_openAnnForm('${a.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+        <button onclick="_deleteAnn('${a.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SETTINGS SAVE
+// ══════════════════════════════════════════════════════════════
+window._saveSettings = async function() {
+  toastLoading('Menyimpan pengaturan...');
+  try {
+    const data = {
+      name: document.getElementById('set-name').value.trim(),
+      abbr: document.getElementById('set-abbr').value.trim(),
+      tagline: document.getElementById('set-tagline').value.trim(),
+      motto: document.getElementById('set-motto').value.trim(),
+      ig: document.getElementById('set-ig').value.trim(),
+      discord: document.getElementById('set-discord').value.trim(),
+      tiktok: document.getElementById('set-tt').value.trim()
+    };
+    // logo
+    const logoFile = document.getElementById('set-logo-file').files[0];
+    if (logoFile) data.logo = await uploadToCloudinary(logoFile, 'wife-alliance/branding');
+    // banner
+    const bannerFile = document.getElementById('set-banner-file').files[0];
+    if (bannerFile) data.banner = await uploadToCloudinary(bannerFile, 'wife-alliance/branding');
+
+    await FS.set('settings', 'main', data);
+    Swal.close(); toast('success', 'Pengaturan disimpan!');
+  } catch (e) { toast('error', 'Gagal', e.message); }
+};
+
+// ── Save Role Order ────────────────────────────────────────────
+window._saveRoleOrder = async function() {
+  const items = document.querySelectorAll('#role-order-list .role-order-item');
+  const order = [...items].map(el => el.dataset.role);
+  toastLoading('Menyimpan urutan...');
+  try {
+    await FS.set('settings', 'main', { roleOrder: order });
+    ROLE_ORDER = order;
+    Swal.close(); toast('success', 'Urutan posisi disimpan!');
+    if (APP.page === 'roster') renderRoster();
+  } catch (e) { toast('error', 'Gagal', e.message); }
+};
+
+let _dragSrc = null;
+window._roleDragStart = function(el) { _dragSrc = el; el.style.opacity = '0.4'; };
+window._roleDragEnd = function(el) { el.style.opacity = '1'; };
+window._roleDragOver = function(e, el) {
+  e.preventDefault();
+  if (_dragSrc && _dragSrc !== el) {
+    const list = document.getElementById('role-order-list');
+    const items = [...list.querySelectorAll('.role-order-item')];
+    const srcIdx = items.indexOf(_dragSrc);
+    const tgtIdx = items.indexOf(el);
+    if (srcIdx < tgtIdx) list.insertBefore(_dragSrc, el.nextSibling);
+    else list.insertBefore(_dragSrc, el);
+  }
+};
+
+// Touch drag support for mobile
+window._roleTouchStart = function(e, el) {
+  _dragSrc = el;
+  el.style.opacity = '0.5';
+  el.style.transform = 'scale(1.04)';
+};
+window._roleTouchEnd = function(e, el) {
+  el.style.opacity = '1';
+  el.style.transform = '';
+  _dragSrc = null;
+};
+window._roleTouchMove = function(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const target = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.role-order-item');
+  if (target && _dragSrc && target !== _dragSrc) {
+    const list = document.getElementById('role-order-list');
+    const items = [...list.querySelectorAll('.role-order-item')];
+    const srcIdx = items.indexOf(_dragSrc);
+    const tgtIdx = items.indexOf(target);
+    if (srcIdx < tgtIdx) list.insertBefore(_dragSrc, target.nextSibling);
+    else list.insertBefore(_dragSrc, target);
+  }
+};
+function populateSettingsForm() {
+  const fields = {
+    'set-name': SETTINGS.name, 'set-abbr': SETTINGS.abbr,
+    'set-tagline': SETTINGS.tagline, 'set-motto': SETTINGS.motto,
+    'set-ig': SETTINGS.ig, 'set-discord': SETTINGS.discord,
+    'set-tt': SETTINGS.tiktok
+  };
+  for (const [id, val] of Object.entries(fields)) {
+    const el = document.getElementById(id);
+    if (el && val) el.value = val;
+  }
+  if (SETTINGS.logo) {
+    const prev = document.getElementById('set-logo-preview');
+    if (prev) { prev.src = SETTINGS.logo; prev.style.display = ''; }
+  }
+  if (SETTINGS.banner) {
+    const prev = document.getElementById('set-banner-preview');
+    if (prev) { prev.src = SETTINGS.banner; prev.style.display = ''; }
+  }
+
+  // Populate role order drag list
+  const roleList = document.getElementById('role-order-list');
+  if (roleList) {
+    const roleColors = { 'EXP Lane':'#F87171','Jungler':'#4ADE80','Mid Lane':'#00E5FF','Gold Lane':'#FDE047','Roamer':'#60A5FA' };
+    roleList.innerHTML = ROLE_ORDER.map(role => `
+      <div class="role-order-item" data-role="${role}" draggable="true"
+        ondragstart="_roleDragStart(this)" ondragend="_roleDragEnd(this)" ondragover="_roleDragOver(event,this)"
+        ontouchstart="_roleTouchStart(event,this)" ontouchend="_roleTouchEnd(event,this)"
+        style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;
+               background:rgba(0,150,200,0.1);border:1px solid rgba(0,229,255,0.2);
+               cursor:grab;transition:all 0.15s">
+        <i class="fas fa-grip-vertical" style="color:rgba(0,229,255,0.5);font-size:1rem"></i>
+        <span style="width:10px;height:10px;border-radius:50%;background:${roleColors[role]||'#aaa'};flex-shrink:0"></span>
+        <span class="orbitron font-bold text-sm" style="color:var(--text-primary)">${role}</span>
+      </div>`).join('');
+  }
+
+  // attach live preview listeners
+  const logoFile = document.getElementById('set-logo-file');
+  if (logoFile && !logoFile._previewAttached) {
+    logoFile._previewAttached = true;
+    logoFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => { const p = document.getElementById('set-logo-preview'); if (p) { p.src = ev.target.result; p.style.display = ''; } };
+      reader.readAsDataURL(file);
+    });
+  }
+  const bannerFile = document.getElementById('set-banner-file');
+  if (bannerFile && !bannerFile._previewAttached) {
+    bannerFile._previewAttached = true;
+    bannerFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => { const p = document.getElementById('set-banner-preview'); if (p) { p.src = ev.target.result; p.style.display = ''; } };
+      reader.readAsDataURL(file);
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  UTILITY
+// ══════════════════════════════════════════════════════════════
+function emptyState(msg) {
+  return `<div class="text-center py-12"><div class="text-4xl mb-3 opacity-40">📭</div><div class="orbitron text-sm" style="color:var(--text-muted)">${msg}</div></div>`;
+}
+function showSkeleton(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="skeleton-wrap">${[1,2,3].map(()=>`<div class="skeleton h-16 rounded-lg mb-2"></div>`).join('')}</div>`;
+}
+function statusClass(s) {
+  return s === 'Inti' ? 'badge-main' : s === 'Cadangan' ? 'badge-cadangan' : s === 'Trial' ? 'badge-trial' : 'badge-inactive';
+}
+function roleClass(r) {
+  const m = { 'EXP Lane':'role-exp', 'Jungler':'role-jungle', 'Mid Lane':'role-mid', 'Gold Lane':'role-gold', 'Roamer':'role-roamer' };
+  return m[r] || '';
+}
+function tierClass(t) {
+  const m = { 'S+':'tier-s-plus', 'S':'tier-s', 'A':'tier-a', 'B':'tier-b', 'C':'tier-c' };
+  return m[t] || '';
+}
+function scheduleStatusClass(s) {
+  return s === 'upcoming' ? 'sch-upcoming' : s === 'berlangsung' ? 'sch-live' : 'sch-done';
+}
+function fmtDate(d) {
+  if (!d) return '-';
+  try { return new Date(d).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }); } catch { return d; }
+}
+function monthShort(d) {
+  if (!d) return '';
+  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  try {
+    if (d.includes('-')) return months[parseInt(d.split('-')[1])-1] || '';
+    return '';
+  } catch { return ''; }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════════
+const APP = { page: 'dashboard', adminSection: 'overview' };
+
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'DASHBOARD', icon: 'fas fa-home' },
+  { id: 'management', label: 'MANAGEMENT', icon: 'fas fa-crown' },
+  { id: 'roster', label: 'ROSTER', icon: 'fas fa-users' },
+  { id: 'meta', label: 'META', icon: 'fas fa-sword' },
+  { id: 'schedule', label: 'JADWAL', icon: 'fas fa-calendar' },
+  { id: 'match', label: 'HASIL MATCH', icon: 'fas fa-trophy' },
+  { id: 'achievement', label: 'ACHIEVEMENT', icon: 'fas fa-medal' },
+  { id: 'rules', label: 'RULES', icon: 'fas fa-scroll' },
+  { id: 'announcement', label: 'PENGUMUMAN', icon: 'fas fa-bullhorn' },
+];
+
+function buildNav() {
+  const desktop = document.getElementById('desktop-nav');
+  const sidebar = document.getElementById('sidebar-nav');
+  const html = NAV_ITEMS.map(n => `
+    <button class="nav-link" data-page="${n.id}" onclick="navigate('${n.id}')">
+      <i class="${n.icon} mr-1 hide-desktop-nav"></i>${n.label}
+    </button>`).join('');
+  if (desktop) desktop.innerHTML = html;
+  if (sidebar) sidebar.innerHTML = NAV_ITEMS.map(n => `
+    <button class="sidebar-nav-item" data-page="${n.id}" onclick="navigate('${n.id}');closeSidebar()">
+      <i class="${n.icon} w-5 text-center"></i> ${n.label}
+    </button>`).join('');
+}
+
+window.navigate = function(page) {
+  APP.page = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById(`page-${page}`);
+  if (target) { target.classList.add('active'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  document.querySelectorAll('[data-page]').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  // Load page data
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'management') renderManagement(mgmtData);
+  if (page === 'roster') renderRoster();
+  if (page === 'meta') renderMeta();
+  if (page === 'schedule') renderSchedule();
+  if (page === 'match') renderMatch();
+  if (page === 'achievement') renderAchievement();
+  if (page === 'rules') renderRules();
+  if (page === 'announcement') renderAnnouncement();
+  if (page === 'admin') {
+    if (!currentUser) { navigate('admin-login'); return; }
+    showAdminSection(APP.adminSection || 'overview');
+    populateSettingsForm();
+  }
+};
+
+window.showAdminSection = function(sec, btn) {
+  APP.adminSection = sec;
+  document.querySelectorAll('.admin-sec').forEach(el => el.style.display = 'none');
+  const target = document.getElementById(`asc-${sec}`);
+  if (target) target.style.display = '';
+  // sync both desktop sidebar and mobile tabs
+  document.querySelectorAll('.admin-sidebar-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('[data-sec]').forEach(el => el.classList.toggle('active', el.dataset.sec === sec));
+  if (btn) btn.classList.add('active');
+  else { const b = document.querySelector(`.admin-sidebar-item[data-sec="${sec}"]`); if (b) b.classList.add('active'); }
+  document.getElementById('admin-section-title').textContent = sec.toUpperCase().replace(/-/g, ' ');
+  // Load section data
+  if (sec === 'management') renderAdminMgmt(mgmtData);
+  if (sec === 'roster') renderAdminRoster(rosterData);
+  if (sec === 'meta') renderAdminMeta(metaData);
+  if (sec === 'schedule') renderAdminSchedule(scheduleData);
+  if (sec === 'match') renderAdminMatch(matchData);
+  if (sec === 'achievement') renderAdminAch(achData);
+  if (sec === 'rules') renderAdminRules(rulesData);
+  if (sec === 'announcement') renderAdminAnn(annData);
+  if (sec === 'settings') populateSettingsForm();
+};
+
+// ── Sidebar ─────────────────────────────────────────────────────
+window.openSidebar = () => { document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebar-overlay').classList.add('open'); };
+window.closeSidebar = () => { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-overlay').classList.remove('open'); };
+
+// ── Triple-tap logo → Admin Login ───────────────────────────────
+(function() {
+  let tapCount = 0, tapTimer = null;
+  document.addEventListener('DOMContentLoaded', () => {
+    const logoBtn = document.getElementById('nav-logo-btn');
+    if (!logoBtn) return;
+    logoBtn.addEventListener('click', () => {
+      tapCount++;
+      clearTimeout(tapTimer);
+      if (tapCount >= 3) {
+        tapCount = 0;
+        if (window.currentUser) navigate('admin');
+        else navigate('admin-login');
+      } else {
+        tapTimer = setTimeout(() => {
+          // single/double tap → go to dashboard normally
+          if (tapCount < 3) navigate('dashboard');
+          tapCount = 0;
+        }, 400);
+      }
+    });
+  });
+})();
+window.togglePass = () => {
+  const inp = document.getElementById('login-pass');
+  const icon = document.getElementById('pass-eye');
+  if (inp.type === 'password') { inp.type = 'text'; icon.className = 'fas fa-eye-slash'; }
+  else { inp.type = 'password'; icon.className = 'fas fa-eye'; }
+};
+
+// ── Clock ───────────────────────────────────────────────────────
+function updateClock() {
+  const el = document.getElementById('admin-clock');
+  if (el) el.textContent = new Date().toLocaleTimeString('id-ID');
+}
+
+// ── INIT ─────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  buildNav();
+  navigate('dashboard');
+  AOS.init({ duration: 600, once: true, offset: 50 });
+  setInterval(updateClock, 1000);
+  updateClock();
+});
+</script>
+
+<style>
+:root {
+  --bg-void: #020408;
+  --bg-deep: #060B14;
+  --bg-surface: #0A1020;
+  --aurora-cyan: #00E5FF;
+  --aurora-blue: #4FACFE;
+  --aurora-purple: #9B59FF;
+  --aurora-pink: #E040FB;
+  --aurora-teal: #00BCD4;
+  /* mapped aliases so existing code keeps working */
+  --purple: #6B3FD4;
+  --purple-light: #9B59FF;
+  --purple-neon: #00E5FF;
+  --gold: #4FACFE;
+  --gold-light: #87CEEB;
+  --text-primary: #E8F4FF;
+  --text-secondary: #8BAFD4;
+  --text-muted: #3D5A7A;
+  --border-glow: rgba(0,229,255,0.25);
+  --border-gold: rgba(79,172,254,0.3);
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  font-family:'Rajdhani',sans-serif;
+  background:var(--bg-void);
+  color:var(--text-primary);
+  min-height:100vh;
+  overflow-x:hidden;
+  background-image:
+    radial-gradient(ellipse 80% 40% at 20% 10%, rgba(0,229,255,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 30% at 80% 80%, rgba(224,64,251,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(79,172,254,0.03) 0%, transparent 100%);
+}
+.orbitron { font-family:'Orbitron',sans-serif; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background:var(--bg-void); }
+::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#00E5FF,#9B59FF); border-radius:3px; }
+
+/* GLASS */
+.glass { background:rgba(14,11,31,0.65); backdrop-filter:blur(16px); border:1px solid var(--border-glow); border-radius:12px; }
+.glass-gold { background:rgba(14,11,31,0.65); backdrop-filter:blur(16px); border:1px solid var(--border-gold); border-radius:12px; }
+
+/* GRADIENT TEXT */
+.gradient-text { background:linear-gradient(135deg,#00E5FF 0%,#4FACFE 40%,#E040FB 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.gradient-text-gold { background:linear-gradient(135deg,#87CEEB 0%,#4FACFE 60%,#00BCD4 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+/* GLOW */
+.glow-purple { box-shadow:0 0 20px rgba(0,229,255,0.4); }
+.glow-gold { box-shadow:0 0 20px rgba(79,172,254,0.4); }
+.text-glow-gold { text-shadow:0 0 20px rgba(0,229,255,0.7); }
+
+/* ANIMATIONS */
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes borderPulse {
+  0%,100% { border-color:rgba(0,229,255,0.5); box-shadow:0 0 12px rgba(0,229,255,0.25); }
+  50% { border-color:rgba(224,64,251,0.5); box-shadow:0 0 22px rgba(224,64,251,0.3); }
+}
+@keyframes auroraFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes livePulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+@keyframes shimmer { 0% { background-position:-400px 0; } 100% { background-position:400px 0; } }
+.neon-border { animation:borderPulse 3s ease-in-out infinite; }
+.logo-ring { position:relative; display:inline-block; }
+.logo-ring::before {
+  content:''; position:absolute; inset:-8px; border-radius:50%;
+  border:2px solid transparent;
+  background:linear-gradient(135deg,#00E5FF,#9B59FF,#E040FB,#00E5FF) border-box;
+  -webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:destination-out; mask-composite:exclude;
+  animation:spin 8s linear infinite;
+}
+
+/* NAVBAR */
+#navbar {
+  position:fixed; top:0; left:0; right:0; z-index:1000;
+  background:rgba(2,4,8,0.94); backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(0,229,255,0.2);
+  box-shadow:0 2px 20px rgba(0,229,255,0.08);
+  transition:all 0.3s;
+}
+.nav-link {
+  font-family:'Orbitron',sans-serif; font-size:0.6rem; font-weight:700;
+  letter-spacing:0.05em; color:var(--text-secondary); padding:6px 9px;
+  border-radius:6px; transition:all 0.25s; background:none; border:none;
+  cursor:pointer; white-space:nowrap; text-decoration:none;
+}
+.nav-link:hover, .nav-link.active { color:var(--gold-light); background:rgba(79,172,254,0.1); text-shadow:0 0 10px rgba(79,172,254,0.4); }
+
+/* SIDEBAR */
+#sidebar {
+  position:fixed; top:0; left:-280px; bottom:0; width:280px; z-index:2000;
+  background:rgba(2,4,8,0.98); backdrop-filter:blur(20px);
+  border-right:1px solid rgba(0,229,255,0.2); transition:left 0.35s cubic-bezier(0.4,0,0.2,1);
+  overflow-y:auto;
+}
+#sidebar.open { left:0; }
+#sidebar-overlay { display:none; position:fixed; inset:0; z-index:1999; background:rgba(0,0,0,0.65); }
+#sidebar-overlay.open { display:block; }
+.sidebar-nav-item {
+  display:flex; align-items:center; gap:12px; padding:11px 16px; border-radius:8px;
+  color:var(--text-secondary); font-family:'Orbitron',sans-serif; font-size:0.65rem;
+  font-weight:600; letter-spacing:0.05em; cursor:pointer; transition:all 0.25s;
+  background:none; border:none; width:100%; text-align:left;
+}
+.sidebar-nav-item:hover, .sidebar-nav-item.active {
+  background:rgba(0,229,255,0.1); color:#00E5FF;
+  border-left:2px solid #00E5FF;
+  text-shadow:0 0 8px rgba(0,229,255,0.4);
+}
+
+/* PAGES */
+.page { display:none; }
+.page.active { display:block; }
+.section-title { font-family:'Orbitron',sans-serif; font-size:clamp(1.5rem,4vw,2.5rem); font-weight:900; }
+
+/* BUTTONS */
+.btn-primary {
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:'Orbitron',sans-serif; font-size:0.75rem; font-weight:700; letter-spacing:0.07em;
+  color:#020408; background:linear-gradient(135deg,#00E5FF,#4FACFE,#9B59FF);
+  padding:11px 24px; border-radius:6px; border:none; cursor:pointer; transition:all 0.3s;
+  text-decoration:none; box-shadow:0 0 18px rgba(0,229,255,0.4);
+}
+.btn-primary:hover { transform:translateY(-2px); box-shadow:0 0 30px rgba(0,229,255,0.6); }
+.btn-secondary {
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:'Orbitron',sans-serif; font-size:0.75rem; font-weight:600; letter-spacing:0.07em;
+  color:var(--purple-neon); background:transparent;
+  padding:10px 24px; border-radius:6px; border:1px solid var(--purple); cursor:pointer; transition:all 0.3s;
+}
+.btn-secondary:hover { background:rgba(0,150,200,0.15); box-shadow:0 0 20px rgba(0,150,200,0.35); border-color:var(--purple-light); }
+.btn-mini-edit {
+  padding:5px 10px; border-radius:5px; border:1px solid rgba(0,229,255,0.3);
+  background:rgba(0,150,200,0.1); color:var(--purple-neon); cursor:pointer; font-size:0.8rem; transition:all 0.2s;
+}
+.btn-mini-edit:hover { background:rgba(0,150,200,0.25); }
+.btn-mini-del {
+  padding:5px 10px; border-radius:5px; border:1px solid rgba(239,68,68,0.3);
+  background:rgba(239,68,68,0.1); color:#F87171; cursor:pointer; font-size:0.8rem; transition:all 0.2s;
+}
+.btn-mini-del:hover { background:rgba(239,68,68,0.2); }
+
+/* FORMS */
+.form-input {
+  width:100%; padding:10px 14px; background:rgba(14,11,31,0.8);
+  border:1px solid rgba(0,229,255,0.3); border-radius:8px;
+  color:var(--text-primary); font-family:'Rajdhani',sans-serif; font-size:1rem;
+  transition:border-color 0.3s; outline:none;
+}
+.form-input:focus { border-color:var(--purple-light); box-shadow:0 0 12px rgba(0,229,255,0.2); }
+.form-input::placeholder { color:var(--text-muted); }
+.form-label { font-family:'Orbitron',sans-serif; font-size:0.65rem; font-weight:600; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:5px; display:block; }
+select.form-input option { background:#0A1020; color:#E8F4FF; }
+textarea.form-input { resize:vertical; min-height:100px; }
+
+/* SweetAlert inputs */
+.swal-input {
+  width:100%; padding:9px 12px; background:rgba(14,11,31,0.9);
+  border:1px solid rgba(0,229,255,0.35); border-radius:7px;
+  color:#E8F4FF; font-family:'Rajdhani',sans-serif; font-size:0.95rem; outline:none;
+}
+.swal-input:focus { border-color:var(--purple-light); }
+select.swal-input option { background:#0A1020; }
+textarea.swal-input { resize:vertical; }
+.swal-label { display:block; font-family:'Orbitron',sans-serif; font-size:0.6rem; font-weight:600; letter-spacing:0.08em; color:#8BAFD4; margin-bottom:4px; }
+
+/* BADGES */
+.status-badge { font-family:'Orbitron',sans-serif; font-size:0.55rem; font-weight:700; letter-spacing:0.05em; padding:3px 8px; border-radius:20px; }
+.badge-main { background:rgba(34,197,94,0.15); color:#4ADE80; border:1px solid rgba(34,197,94,0.3); }
+.badge-cadangan { background:rgba(234,179,8,0.15); color:#FDE047; border:1px solid rgba(234,179,8,0.3); }
+.badge-trial { background:rgba(59,130,246,0.15); color:#60A5FA; border:1px solid rgba(59,130,246,0.3); }
+.badge-inactive { background:rgba(239,68,68,0.15); color:#F87171; border:1px solid rgba(239,68,68,0.3); }
+
+/* ROLE BADGES */
+.role-badge { font-family:'Orbitron',sans-serif; font-size:0.55rem; font-weight:700; letter-spacing:0.05em; padding:3px 8px; border-radius:20px; }
+.role-exp { background:rgba(245,158,11,0.15); color:#FBBF24; border:1px solid rgba(245,158,11,0.3); }
+.role-jungle { background:rgba(16,185,129,0.15); color:#34D399; border:1px solid rgba(16,185,129,0.3); }
+.role-mid { background:rgba(0,229,255,0.15); color:#00E5FF; border:1px solid rgba(0,229,255,0.3); }
+.role-gold { background:rgba(234,179,8,0.15); color:#FDE047; border:1px solid rgba(234,179,8,0.3); }
+.role-roamer { background:rgba(59,130,246,0.15); color:#60A5FA; border:1px solid rgba(59,130,246,0.3); }
+
+/* TIER BADGES */
+.tier-badge { font-family:'Orbitron',sans-serif; font-size:0.6rem; font-weight:900; padding:3px 9px; border-radius:4px; }
+.tier-s-plus { background:linear-gradient(135deg,#FF4444,#CC0000); color:#fff; }
+.tier-s { background:linear-gradient(135deg,#FF9F43,#E55B13); color:#fff; }
+.tier-a { background:linear-gradient(135deg,#9B59FF,#6B3FD4); color:#fff; }
+.tier-b { background:linear-gradient(135deg,#3B82F6,#1D4ED8); color:#fff; }
+.tier-c { background:linear-gradient(135deg,#6B7280,#374151); color:#aaa; }
+
+/* SCHEDULE STATUS */
+.schedule-status { font-family:'Orbitron',sans-serif; font-size:0.55rem; font-weight:700; padding:3px 8px; border-radius:20px; }
+.sch-upcoming { background:rgba(0,229,255,0.15); color:#00E5FF; border:1px solid rgba(0,229,255,0.3); }
+.sch-live { background:rgba(34,197,94,0.15); color:#4ADE80; border:1px solid rgba(34,197,94,0.3); animation:livePulse 1.5s ease-in-out infinite; }
+.sch-done { background:rgba(107,114,128,0.15); color:#9CA3AF; border:1px solid rgba(107,114,128,0.3); }
+
+/* CARDS */
+.player-card { background:rgba(14,11,31,0.7); border:1px solid rgba(0,229,255,0.2); border-radius:12px; overflow:hidden; transition:all 0.3s; }
+.player-card:hover { border-color:var(--gold); box-shadow:0 0 25px rgba(79,172,254,0.2); transform:translateY(-4px); }
+.meta-card { background:rgba(14,11,31,0.7); border:1px solid rgba(0,229,255,0.2); border-radius:12px; overflow:hidden; transition:all 0.3s; }
+.meta-card:hover { border-color:var(--gold); box-shadow:0 0 25px rgba(79,172,254,0.2); transform:translateY(-4px); }
+/* ── DRAFT PICK CARDS ── */
+.draft-card { background:rgba(14,11,31,0.8); border:1px solid; border-radius:16px; overflow:hidden; transition:all 0.35s; display:flex; flex-direction:column; }
+.draft-card:hover { transform:translateY(-6px); box-shadow:0 16px 48px rgba(0,0,0,0.5); }
+.draft-header { padding:18px 20px 14px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.draft-body { padding:18px 20px 20px; flex:1; display:flex; flex-direction:column; }
+.draft-badge { font-family:'Orbitron',sans-serif; font-size:0.65rem; font-weight:700; padding:3px 10px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.draft-section-label { font-family:'Orbitron',sans-serif; font-size:0.65rem; font-weight:700; letter-spacing:0.08em; margin-bottom:8px; }
+.ban-label { color:#F87171; }
+.pick-label { color:#4ADE80; }
+.hero-chip { font-size:0.7rem; padding:3px 10px; border-radius:999px; font-weight:600; font-family:'Rajdhani',sans-serif; }
+.ban-chip { background:rgba(248,113,113,0.1); color:#F87171; border:1px solid rgba(248,113,113,0.3); }
+.pick-row { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); }
+.pick-num { font-family:'Orbitron',sans-serif; font-size:0.65rem; font-weight:900; color:var(--gold); min-width:14px; }
+.pick-hero { font-family:'Rajdhani',sans-serif; font-size:0.85rem; font-weight:700; color:var(--text-primary); flex:1; }
+.pick-role { font-family:'Orbitron',sans-serif; font-size:0.6rem; font-weight:700; padding:2px 8px; border-radius:6px; }
+.jungle-role { background:rgba(74,222,128,0.12); color:#4ADE80; }
+.roam-role { background:rgba(96,165,250,0.12); color:#60A5FA; }
+.gold-role { background:rgba(79,172,254,0.15); color:var(--gold); }
+.mid-role { background:rgba(0,229,255,0.12); color:#00E5FF; }
+.exp-role { background:rgba(251,191,36,0.12); color:#FBBF24; }
+.draft-counter { margin-top:auto; padding:8px 12px; border-radius:8px; background:rgba(248,113,113,0.06); border:1px solid rgba(248,113,113,0.15); }
+.ach-card { background:rgba(14,11,31,0.7); border:1px solid rgba(79,172,254,0.2); border-radius:12px; padding:24px; text-align:center; transition:all 0.3s; position:relative; overflow:hidden; }
+.ach-card:hover { border-color:var(--gold); box-shadow:0 0 30px rgba(79,172,254,0.2); }
+.rule-item { display:flex; gap:14px; padding:14px; border-radius:8px; background:rgba(14,11,31,0.5); border-left:3px solid var(--purple); transition:all 0.3s; }
+.rule-item:hover { border-left-color:var(--gold); background:rgba(14,11,31,0.7); }
+
+/* STAT CARD */
+.stat-card { position:relative; overflow:hidden; padding:20px; border-radius:12px; background:rgba(6,11,20,0.7); border:1px solid rgba(0,229,255,0.18); transition:all 0.3s; }
+.stat-card:hover { border-color:rgba(0,229,255,0.4); transform:translateY(-3px); box-shadow:0 0 25px rgba(0,229,255,0.1); }
+.stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,#00E5FF,#E040FB,transparent); opacity:0; transition:opacity 0.3s; }
+.stat-card:hover::before { opacity:1; }
+
+/* ADMIN SIDEBAR */
+.admin-sidebar-item {
+  display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:8px;
+  color:var(--text-secondary); font-family:'Orbitron',sans-serif; font-size:0.6rem; font-weight:600; letter-spacing:0.05em;
+  cursor:pointer; transition:all 0.25s; background:none; border:none; width:100%; text-align:left;
+  text-decoration:none;
+}
+.admin-sidebar-item:hover, .admin-sidebar-item.active {
+  background:rgba(0,150,200,0.18); color:var(--gold-light);
+  border-left:2px solid var(--gold);
+}
+
+/* SKELETON */
+.skeleton { background:linear-gradient(90deg,rgba(0,150,200,0.08) 25%,rgba(0,229,255,0.12) 50%,rgba(0,150,200,0.08) 75%); background-size:400px 100%; animation:shimmer 1.5s infinite; }
+
+/* SOCIAL MINI */
+.social-mini {
+  width:34px; height:34px; border-radius:7px; background:rgba(0,150,200,0.12);
+  border:1px solid rgba(0,229,255,0.25); display:flex; align-items:center; justify-content:center;
+  color:var(--text-secondary); transition:all 0.3s; font-size:1rem; text-decoration:none;
+}
+.social-mini:hover { background:rgba(79,172,254,0.12); border-color:var(--gold); color:var(--gold-light); transform:translateY(-2px); }
+
+/* GRIDS */
+.auto-grid-3 { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px; }
+.auto-grid-4 { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
+
+/* FOOTER */
+footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
+.social-icon { width:38px; height:38px; border-radius:8px; background:rgba(0,150,200,0.12); border:1px solid rgba(0,229,255,0.25); display:flex; align-items:center; justify-content:center; color:var(--text-secondary); transition:all 0.3s; font-size:1.1rem; text-decoration:none; }
+.social-icon:hover { background:rgba(79,172,254,0.12); border-color:var(--gold); color:var(--gold-light); transform:translateY(-3px); box-shadow:0 0 14px rgba(79,172,254,0.25); }
+
+/* TAB BUTTONS */
+.tab-btn { font-family:'Orbitron',sans-serif; font-size:0.6rem; font-weight:600; letter-spacing:0.05em; padding:7px 14px; border-radius:6px; border:1px solid rgba(0,229,255,0.3); background:transparent; color:var(--text-secondary); cursor:pointer; transition:all 0.25s; }
+.tab-btn.active, .tab-btn:hover { background:rgba(0,150,200,0.2); color:var(--gold-light); border-color:rgba(79,172,254,0.35); }
+
+/* HERO SECTION */
+.hero-bg {
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 100% 70% at 30% 20%, rgba(0,229,255,0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 60% at 70% 60%, rgba(224,64,251,0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 10% 80%, rgba(79,172,254,0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 90% 10%, rgba(155,89,255,0.12) 0%, transparent 60%),
+    linear-gradient(180deg,#020408 0%,#060B14 40%,#0A1020 70%,#020408 100%);
+}
+.hero-aurora {
+  position:absolute; inset:0; overflow:hidden; pointer-events:none;
+}
+.hero-aurora::before {
+  content:'';
+  position:absolute; top:-30%; left:-20%; width:140%; height:80%;
+  background:linear-gradient(135deg,
+    rgba(0,229,255,0.06) 0%,
+    rgba(79,172,254,0.08) 20%,
+    rgba(155,89,255,0.07) 40%,
+    rgba(224,64,251,0.06) 60%,
+    rgba(0,188,212,0.05) 80%,
+    transparent 100%
+  );
+  background-size:300% 300%;
+  animation:auroraFlow 12s ease-in-out infinite;
+  border-radius:0 0 50% 50%;
+  filter:blur(40px);
+}
+.hero-aurora::after {
+  content:'';
+  position:absolute; top:10%; left:-10%; width:120%; height:60%;
+  background:linear-gradient(100deg,
+    transparent 0%,
+    rgba(0,229,255,0.04) 20%,
+    rgba(155,89,255,0.06) 50%,
+    rgba(224,64,251,0.04) 80%,
+    transparent 100%
+  );
+  background-size:200% 200%;
+  animation:auroraFlow 18s ease-in-out infinite reverse;
+  filter:blur(30px);
+}
+.hero-grid {
+  position:absolute; inset:0;
+  background-image:linear-gradient(rgba(0,229,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.04) 1px,transparent 1px);
+  background-size:40px 40px;
+  mask-image:radial-gradient(ellipse at center,black 30%,transparent 80%);
+}
+
+/* LIVE CLOCK + COUNTDOWN BANNER */
+#live-banner {
+  display:flex; align-items:center; gap:8px;
+  padding:5px 10px; border-radius:10px;
+  background:rgba(0,150,200,0.08);
+  border:1px solid rgba(0,229,255,0.25);
+  flex-shrink:0;
+}
+#lb-divider { width:1px; height:24px; background:rgba(0,229,255,0.25); }
+@media (max-width:480px) {
+  #live-banner { padding:4px 8px; gap:6px; }
+  #lb-time { font-size:0.68rem !important; }
+  #lb-date { font-size:0.42rem !important; }
+  #lb-cd-label { font-size:0.38rem !important; }
+  #lb-cd-time { font-size:0.62rem !important; }
+}
+
+/* RESPONSIVE */
+@media (max-width:768px) {
+  .hide-mobile { display:none !important; }
+  .auto-grid-3, .auto-grid-4 { grid-template-columns:1fr; }
+  .hide-desktop-nav { display:inline; }
+}
+@media (min-width:769px) {
+  .hide-desktop { display:none !important; }
+  .hide-desktop-nav { display:none; }
+}
+
+/* HIDDEN */
+.hidden { display:none !important; }
+
+/* TOAST notification */
+.colored-toast.swal2-popup { font-family:'Rajdhani',sans-serif; font-size:0.95rem; min-width:240px; }
+.swal2-icon.swal2-success .swal2-success-ring { border-color:rgba(74,222,128,0.3); }
+
+/* ADMIN MOBILE NAV */
+.md\:flex { display:none; }
+@media (min-width:768px) { .md\:flex { display:flex; } .md\:hidden { display:none !important; } }
+@media (max-width:767px) { .md\:hidden { display:block; } }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- SIDEBAR (mobile) -->
+<div id="sidebar">
+  <div class="p-5 border-b" style="border-color:rgba(0,229,255,0.15)">
+    <div class="flex items-center justify-between mb-1">
+      <span class="orbitron text-sm font-bold gradient-text sq-abbr">WIFE</span>
+      <button onclick="closeSidebar()" style="color:var(--text-muted);background:none;border:none;font-size:1.2rem;cursor:pointer"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="text-xs" style="color:var(--aurora-cyan);font-family:'Orbitron';opacity:0.7">AURORA</div>
+  </div>
+  <nav class="p-3 flex flex-col gap-1" id="sidebar-nav"></nav>
+</div>
+
+<!-- NAVBAR -->
+<nav id="navbar" class="px-4 py-3">
+  <div class="max-w-screen-2xl mx-auto flex items-center justify-between">
+    <button onclick="navigate('dashboard')" id="nav-logo-btn" class="flex items-center gap-3" style="background:none;border:none;cursor:pointer">
+      <div class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0" style="background:rgba(0,229,255,0.12);border:1px solid rgba(0,229,255,0.4);box-shadow:0 0 10px rgba(0,229,255,0.2)">
+        <img class="sq-logo w-full h-full object-cover" src="" alt="" style="display:none"/>
+        <i class="fas fa-star" style="color:#00E5FF" id="nav-logo-icon"></i>
+      </div>
+      <div class="text-left">
+        <div class="orbitron text-xs font-black gradient-text leading-none sq-name">W.I.F.E AURORA</div>
+        <div class="orbitron leading-none mt-0.5 sq-tagline" style="font-size:0.45rem;color:var(--text-muted);letter-spacing:0.08em">Warriors In Fierce Engagements</div>
+      </div>
+    </button>
+
+    <!-- LIVE CLOCK + COUNTDOWN BANNER -->
+    <div id="live-banner">
+      <div style="text-align:center;line-height:1.1">
+        <div id="lb-time" class="orbitron font-bold" style="font-size:0.8rem;color:var(--gold)">--:--:--</div>
+        <div id="lb-date" class="orbitron" style="font-size:0.5rem;color:var(--text-muted);letter-spacing:0.04em;white-space:nowrap">-- --- ----</div>
+      </div>
+      <div id="lb-divider" style="display:none"></div>
+      <div id="lb-countdown-wrap" style="display:none;text-align:center;line-height:1.1">
+        <div id="lb-cd-label" class="orbitron" style="font-size:0.45rem;color:var(--purple-neon);letter-spacing:0.04em;white-space:nowrap"><i class="fas fa-hourglass-half mr-1"></i>NEXT EVENT</div>
+        <div id="lb-cd-time" class="orbitron font-bold" style="font-size:0.72rem;color:#E8F4FF;white-space:nowrap">--</div>
+      </div>
+    </div>
+
+    <div class="hide-mobile flex items-center gap-0.5 flex-wrap justify-center" id="desktop-nav"></div>
+    <div class="flex items-center gap-2">
+      <span id="btn-admin-panel" class="hidden"></span>
+      <button class="hide-desktop" onclick="openSidebar()" style="background:none;border:1px solid rgba(0,229,255,0.4);color:var(--purple-neon);width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:1rem"><i class="fas fa-bars"></i></button>
+    </div>
+  </div>
+</nav>
+
+<main style="padding-top:60px">
+
+<!-- ━━━━━━━━━━━━━ DASHBOARD ━━━━━━━━━━━━━ -->
+<section id="page-dashboard" class="page">
+  <div class="relative overflow-hidden" style="min-height:40vh;display:flex;align-items:center;justify-content:center;padding:60px 16px 40px">
+    <div class="hero-bg"></div>
+    <div class="hero-aurora"></div>
+    <div class="hero-grid"></div>
+    <div class="relative z-10 text-center max-w-2xl mx-auto">
+      <div class="flex justify-center mb-6" data-aos="zoom-in">
+        <div class="logo-ring">
+          <div class="w-28 h-28 rounded-full overflow-hidden" style="border:2px solid rgba(0,229,255,0.5)">
+            <img class="sq-logo w-full h-full object-cover" src="" alt="" style="display:none"/>
+            <div class="w-full h-full flex items-center justify-center" id="dash-logo-placeholder" style="background:rgba(0,150,200,0.2)">
+              <i class="fas fa-star text-5xl" style="color:var(--aurora-cyan);text-shadow:0 0 20px rgba(0,229,255,0.6)"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--aurora-cyan)">✦ MOBILE LEGENDS LADIES SQUAD ✦</div>
+      <h1 class="orbitron font-black gradient-text mb-1 sq-name" style="font-size:clamp(2rem,7vw,4rem)">W.I.F.E AURORA</h1>
+      <p class="text-base mb-1 sq-tagline" style="color:var(--text-secondary);font-family:'Orbitron';font-size:0.8rem;letter-spacing:0.08em">Warriors In Fierce Engagements Aurora</p>
+      <p class="text-lg font-semibold italic sq-motto" style="color:var(--text-muted)">"Unite, Fight, Conquer — No Retreat, No Surrender"</p>
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-4 pb-16">
+    <!-- STATS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10" data-aos="fade-up">
+      <div class="stat-card">
+        <div class="text-2xl mb-1 orbitron font-black gradient-text-gold" id="dash-total-player">—</div>
+        <div class="text-xs orbitron" style="color:var(--text-muted)">TOTAL PLAYER</div>
+        <i class="fas fa-users absolute right-4 top-4 text-2xl" style="color:rgba(0,229,255,0.2)"></i>
+      </div>
+      <div class="stat-card">
+        <div class="text-2xl mb-1 orbitron font-black" style="color:#4ADE80" id="dash-main-player">—</div>
+        <div class="text-xs orbitron" style="color:var(--text-muted)">PLAYER INTI</div>
+        <i class="fas fa-star absolute right-4 top-4 text-2xl" style="color:rgba(34,197,94,0.15)"></i>
+      </div>
+      <div class="stat-card">
+        <div class="text-2xl mb-1 orbitron font-black" style="color:var(--purple-neon)" id="dash-upcoming">—</div>
+        <div class="text-xs orbitron" style="color:var(--text-muted)">JADWAL UPCOMING</div>
+        <i class="fas fa-calendar absolute right-4 top-4 text-2xl" style="color:rgba(0,229,255,0.15)"></i>
+      </div>
+      <div class="stat-card">
+        <div class="text-2xl mb-1 orbitron font-black gradient-text-gold" id="dash-achievement">—</div>
+        <div class="text-xs orbitron" style="color:var(--text-muted)">ACHIEVEMENT</div>
+        <i class="fas fa-trophy absolute right-4 top-4 text-2xl" style="color:rgba(79,172,254,0.15)"></i>
+      </div>
+    </div>
+
+    <!-- 3 COLS -->
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- ROSTER PREVIEW -->
+      <div class="glass p-5" data-aos="fade-up">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="orbitron font-bold text-sm" style="color:var(--gold)">👥 ROSTER</h3>
+          <button onclick="navigate('roster')" class="text-xs orbitron" style="color:var(--purple-neon);background:none;border:none;cursor:pointer">LIHAT SEMUA →</button>
+        </div>
+        <div id="dash-roster-preview"></div>
+      </div>
+      <!-- SCHEDULE PREVIEW -->
+      <div class="glass p-5" data-aos="fade-up" data-aos-delay="100">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="orbitron font-bold text-sm" style="color:var(--gold)">📅 JADWAL UPCOMING</h3>
+          <button onclick="navigate('schedule')" class="text-xs orbitron" style="color:var(--purple-neon);background:none;border:none;cursor:pointer">LIHAT SEMUA →</button>
+        </div>
+        <div id="dash-schedule-preview"></div>
+      </div>
+      <!-- ANNOUNCEMENT PREVIEW -->
+      <div class="glass p-5" data-aos="fade-up" data-aos-delay="200">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="orbitron font-bold text-sm" style="color:var(--gold)">📢 PENGUMUMAN</h3>
+          <button onclick="navigate('announcement')" class="text-xs orbitron" style="color:var(--purple-neon);background:none;border:none;cursor:pointer">LIHAT SEMUA →</button>
+        </div>
+        <div id="dash-ann-preview"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ MANAGEMENT ━━━━━━━━━━━━━ -->
+<section id="page-management" class="page">
+  <div class="max-w-6xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">👑 MANAJEMEN</div>
+      <h1 class="section-title gradient-text">MANAGEMENT</h1>
+    </div>
+    <div class="auto-grid-3" id="management-grid"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ ROSTER ━━━━━━━━━━━━━ -->
+<section id="page-roster" class="page">
+  <div class="max-w-7xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">👥 ANGGOTA</div>
+      <h1 class="section-title gradient-text">ROSTER</h1>
+    </div>
+    <!-- FILTERS -->
+    <div class="glass p-4 mb-8 flex flex-col gap-3" data-aos="fade-up">
+      <div class="flex gap-2">
+        <div class="relative flex-1">
+          <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-sm" style="color:var(--text-muted)"></i>
+          <input class="form-input pl-9" placeholder="Cari nama atau nickname..." oninput="_rosterSearch(this.value)"/>
+        </div>
+        <!-- VIEW TOGGLE -->
+        <div class="flex gap-1" style="flex-shrink:0">
+          <button id="roster-view-grid" onclick="_rosterView('grid')" title="Grid View"
+            style="width:36px;height:36px;border-radius:8px;border:1px solid rgba(0,229,255,0.5);background:rgba(0,150,200,0.3);color:var(--purple-neon);cursor:pointer;font-size:0.9rem;transition:all 0.2s">
+            <i class="fas fa-th"></i>
+          </button>
+          <button id="roster-view-list" onclick="_rosterView('list')" title="List View"
+            style="width:36px;height:36px;border-radius:8px;border:1px solid rgba(0,229,255,0.2);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.9rem;transition:all 0.2s">
+            <i class="fas fa-list"></i>
+          </button>
+        </div>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <span class="text-xs orbitron" style="color:var(--text-muted);padding:7px 0">ROLE:</span>
+        <button class="tab-btn roster-role-btn active" onclick="_rosterFilterRole('all',this)">SEMUA</button>
+        <button class="tab-btn roster-role-btn" onclick="_rosterFilterRole('EXP Lane',this)">EXP</button>
+        <button class="tab-btn roster-role-btn" onclick="_rosterFilterRole('Jungler',this)">JUNGLE</button>
+        <button class="tab-btn roster-role-btn" onclick="_rosterFilterRole('Mid Lane',this)">MID</button>
+        <button class="tab-btn roster-role-btn" onclick="_rosterFilterRole('Gold Lane',this)">GOLD</button>
+        <button class="tab-btn roster-role-btn" onclick="_rosterFilterRole('Roamer',this)">ROAM</button>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <span class="text-xs orbitron" style="color:var(--text-muted);padding:7px 0">STATUS:</span>
+        <button class="tab-btn roster-status-btn active" onclick="_rosterFilterStatus('all',this)">SEMUA</button>
+        <button class="tab-btn roster-status-btn" onclick="_rosterFilterStatus('Inti',this)">INTI</button>
+        <button class="tab-btn roster-status-btn" onclick="_rosterFilterStatus('Cadangan',this)">CADANGAN</button>
+        <button class="tab-btn roster-status-btn" onclick="_rosterFilterStatus('Trial',this)">TRIAL</button>
+        <button class="tab-btn roster-status-btn" onclick="_rosterFilterStatus('Inactive',this)">INACTIVE</button>
+      </div>
+    </div>
+    <div id="roster-grid"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ META HERO ━━━━━━━━━━━━━ -->
+<section id="page-meta" class="page">
+  <div class="max-w-7xl mx-auto px-4 py-12">
+
+    <!-- ══════════════ DRAFT PICK ══════════════ -->
+    <div class="mt-14" data-aos="fade-up">
+      <div class="text-center mb-8">
+        <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">🎯 STRATEGI</div>
+        <h2 class="section-title gradient-text" style="font-size:1.8rem">META DRAFT PICK</h2>
+        <p class="text-sm mt-2" style="color:var(--text-muted)">Patch 2.1.88 / Season 41 &nbsp;·&nbsp; W.I.F.E AURORA</p>
+      </div>
+
+      <!-- Konten draft akan diisi kembali -->
+      <div class="glass p-8 text-center" style="border-color:rgba(0,229,255,0.2)">
+        <div class="text-sm" style="color:var(--text-muted)">Belum ada draft pick yang ditampilkan. Konten akan segera diperbarui.</div>
+      </div>
+
+    </div><!-- end draft section -->
+
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ SCHEDULE ━━━━━━━━━━━━━ -->
+<section id="page-schedule" class="page">
+  <div class="max-w-5xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">📅 JADWAL</div>
+      <h1 class="section-title gradient-text">SCHEDULE</h1>
+    </div>
+    <div class="flex gap-2 mb-8 flex-wrap" data-aos="fade-up">
+      <button class="tab-btn sch-filter-btn active" onclick="_scheduleFilter('all',this)">SEMUA</button>
+      <button class="tab-btn sch-filter-btn" onclick="_scheduleFilter('scrim',this)">SCRIM</button>
+      <button class="tab-btn sch-filter-btn" onclick="_scheduleFilter('tournament',this)">TOURNAMENT</button>
+      <button class="tab-btn sch-filter-btn" onclick="_scheduleFilter('latihan',this)">LATIHAN</button>
+      <button class="tab-btn sch-filter-btn" onclick="_scheduleFilter('meeting',this)">MEETING</button>
+      <button class="tab-btn sch-filter-btn" onclick="_scheduleFilter('upcoming',this)">UPCOMING</button>
+      <button class="tab-btn sch-filter-btn" onclick="_scheduleFilter('selesai',this)">SELESAI</button>
+    </div>
+    <div class="flex flex-col gap-3" id="schedule-list"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ MATCH HISTORY ━━━━━━━━━━━━━ -->
+<section id="page-match" class="page">
+  <div class="max-w-5xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">⚔ PERTANDINGAN</div>
+      <h1 class="section-title gradient-text">HASIL MATCH</h1>
+    </div>
+    <!-- WIN/LOSS RECORD BAR -->
+    <div class="glass p-5 mb-8 flex flex-col sm:flex-row items-center gap-4" data-aos="fade-up">
+      <div class="flex gap-6 text-center">
+        <div>
+          <div class="orbitron font-black text-2xl" style="color:#4ADE80" id="match-wins">—</div>
+          <div class="text-xs orbitron" style="color:var(--text-muted)">MENANG</div>
+        </div>
+        <div>
+          <div class="orbitron font-black text-2xl" style="color:#F87171" id="match-losses">—</div>
+          <div class="text-xs orbitron" style="color:var(--text-muted)">KALAH</div>
+        </div>
+        <div>
+          <div class="orbitron font-black text-2xl gradient-text-gold" id="match-winrate">—</div>
+          <div class="text-xs orbitron" style="color:var(--text-muted)">WIN RATE</div>
+        </div>
+      </div>
+      <div class="flex-1 w-full sm:w-auto">
+        <div class="text-xs orbitron mb-1" style="color:var(--text-muted)">WIN RATE BAR</div>
+        <div style="background:rgba(239,68,68,0.2);border-radius:20px;height:10px;overflow:hidden;border:1px solid rgba(239,68,68,0.25)">
+          <div id="match-wr-bar" style="height:100%;background:linear-gradient(90deg,#4ADE80,#22c55e);border-radius:20px;transition:width 0.8s cubic-bezier(0.4,0,0.2,1);width:0%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 mb-8 flex-wrap" data-aos="fade-up">
+      <button class="tab-btn match-filter-btn active" onclick="_matchFilter('all',this)">SEMUA</button>
+      <button class="tab-btn match-filter-btn" onclick="_matchFilter('scrim',this)">SCRIM</button>
+      <button class="tab-btn match-filter-btn" onclick="_matchFilter('tournament',this)">TOURNAMENT</button>
+    </div>
+    <div class="flex flex-col gap-3" id="match-list"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ ACHIEVEMENT ━━━━━━━━━━━━━ -->
+<section id="page-achievement" class="page">
+  <div class="max-w-6xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">🏅 PRESTASI</div>
+      <h1 class="section-title gradient-text-gold">ACHIEVEMENT</h1>
+    </div>
+    <div class="auto-grid-3" id="achievement-grid"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ RULES ━━━━━━━━━━━━━ -->
+<section id="page-rules" class="page">
+  <div class="max-w-4xl mx-auto px-4 py-12">
+    <div class="text-center mb-12" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">📜 PERATURAN</div>
+      <h1 class="section-title gradient-text">SQUAD RULES</h1>
+      <p class="mt-3 text-sm sq-name" style="color:var(--text-secondary)">Peraturan wajib seluruh anggota W.I.F.E AURORA</p>
+    </div>
+    <div id="rules-list"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ ANNOUNCEMENT ━━━━━━━━━━━━━ -->
+<section id="page-announcement" class="page">
+  <div class="max-w-4xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">📢 INFO SQUAD</div>
+      <h1 class="section-title gradient-text">PENGUMUMAN</h1>
+    </div>
+    <div id="announcement-list"></div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ ADMIN LOGIN ━━━━━━━━━━━━━ -->
+<section id="page-admin-login" class="page">
+  <div class="min-h-screen flex items-center justify-center px-4 py-16" style="background:radial-gradient(ellipse at center,rgba(0,150,200,0.08) 0%,transparent 70%)">
+    <div class="w-full max-w-md" data-aos="zoom-in">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center neon-border" style="background:rgba(0,150,200,0.15);border:1px solid rgba(0,229,255,0.4)">
+          <i class="fas fa-lock text-2xl" style="color:var(--purple-neon)"></i>
+        </div>
+        <h1 class="orbitron font-black text-2xl gradient-text">ADMIN LOGIN</h1>
+        <p class="text-sm mt-1" style="color:var(--text-muted)">W.I.F.E AURORA · Panel Admin</p>
+      </div>
+      <div class="glass p-8 neon-border">
+        <div class="flex flex-col gap-5">
+          <div>
+            <label class="form-label">EMAIL</label>
+            <input class="form-input" type="email" id="login-email" placeholder="admin@wifealliance.com"/>
+          </div>
+          <div>
+            <label class="form-label">PASSWORD</label>
+            <div class="relative">
+              <input class="form-input" style="padding-right:44px" type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')_authLogin()"/>
+              <button onclick="togglePass()" class="absolute right-3 top-1/2 -translate-y-1/2" style="background:none;border:none;color:var(--text-muted);cursor:pointer"><i class="fas fa-eye" id="pass-eye"></i></button>
+            </div>
+          </div>
+          <button class="btn-primary justify-center" onclick="_authLogin()"><i class="fas fa-sign-in-alt"></i> MASUK</button>
+        </div>
+        <div class="text-center mt-4">
+          <button onclick="navigate('dashboard')" class="text-xs" style="color:var(--text-muted);background:none;border:none;cursor:pointer">← Kembali ke Dashboard</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ━━━━━━━━━━━━━ ADMIN PANEL ━━━━━━━━━━━━━ -->
+<section id="page-admin" class="page">
+  <div class="flex" style="min-height:calc(100vh - 60px)">
+    <!-- ADMIN SIDEBAR -->
+    <div class="hidden md:flex flex-col" style="width:220px;min-width:220px;background:rgba(8,6,20,0.96);border-right:1px solid rgba(0,229,255,0.12);padding:16px 10px;overflow-y:auto">
+      <div class="orbitron text-xs tracking-widest mb-5 px-2" style="color:var(--text-muted)">⚙ PANEL ADMIN</div>
+      <button class="admin-sidebar-item active" data-sec="overview" onclick="showAdminSection('overview',this)"><i class="fas fa-chart-pie w-5 text-center"></i> Overview</button>
+      <button class="admin-sidebar-item" data-sec="management" onclick="showAdminSection('management',this)"><i class="fas fa-crown w-5 text-center"></i> Management</button>
+      <button class="admin-sidebar-item" data-sec="roster" onclick="showAdminSection('roster',this)"><i class="fas fa-users w-5 text-center"></i> Roster</button>
+      <button class="admin-sidebar-item" data-sec="meta" onclick="showAdminSection('meta',this)"><i class="fas fa-khanda w-5 text-center"></i> Meta Hero</button>
+      <button class="admin-sidebar-item" data-sec="schedule" onclick="showAdminSection('schedule',this)"><i class="fas fa-calendar w-5 text-center"></i> Jadwal</button>
+      <button class="admin-sidebar-item" data-sec="match" onclick="showAdminSection('match',this)"><i class="fas fa-trophy w-5 text-center"></i> Hasil Match</button>
+      <button class="admin-sidebar-item" data-sec="achievement" onclick="showAdminSection('achievement',this)"><i class="fas fa-medal w-5 text-center"></i> Achievement</button>
+      <button class="admin-sidebar-item" data-sec="rules" onclick="showAdminSection('rules',this)"><i class="fas fa-scroll w-5 text-center"></i> Rules</button>
+      <button class="admin-sidebar-item" data-sec="announcement" onclick="showAdminSection('announcement',this)"><i class="fas fa-bullhorn w-5 text-center"></i> Pengumuman</button>
+      <button class="admin-sidebar-item" data-sec="settings" onclick="showAdminSection('settings',this)"><i class="fas fa-gear w-5 text-center"></i> Pengaturan</button>
+      <button class="admin-sidebar-item" data-sec="security" onclick="showAdminSection('security',this)"><i class="fas fa-shield w-5 text-center"></i> Keamanan</button>
+      <div class="mt-auto pt-4 border-t" style="border-color:rgba(0,229,255,0.1)">
+        <button class="admin-sidebar-item" onclick="navigate('dashboard')"><i class="fas fa-home w-5 text-center"></i> Lihat Website</button>
+        <button class="admin-sidebar-item" onclick="_authLogout()" style="color:#F87171"><i class="fas fa-sign-out-alt w-5 text-center"></i> Logout</button>
+      </div>
+    </div>
+
+    <!-- ADMIN MAIN -->
+    <div class="flex-1 overflow-auto" style="background:rgba(4,3,10,0.5)">
+      <!-- MOBILE ADMIN NAV (shown on small screens) -->
+      <div class="md:hidden overflow-x-auto" style="background:rgba(8,6,20,0.96);border-bottom:1px solid rgba(0,229,255,0.12);padding:8px 12px">
+        <div class="flex gap-2" style="min-width:max-content">
+          <button class="tab-btn active" data-sec="overview" onclick="showAdminSection('overview',this)">Overview</button>
+          <button class="tab-btn" data-sec="management" onclick="showAdminSection('management',this)">Mgmt</button>
+          <button class="tab-btn" data-sec="roster" onclick="showAdminSection('roster',this)">Roster</button>
+          <button class="tab-btn" data-sec="meta" onclick="showAdminSection('meta',this)">Meta</button>
+          <button class="tab-btn" data-sec="schedule" onclick="showAdminSection('schedule',this)">Jadwal</button>
+          <button class="tab-btn" data-sec="match" onclick="showAdminSection('match',this)">Match</button>
+          <button class="tab-btn" data-sec="achievement" onclick="showAdminSection('achievement',this)">Ach</button>
+          <button class="tab-btn" data-sec="rules" onclick="showAdminSection('rules',this)">Rules</button>
+          <button class="tab-btn" data-sec="announcement" onclick="showAdminSection('announcement',this)">Pengumuman</button>
+          <button class="tab-btn" data-sec="settings" onclick="showAdminSection('settings',this)">Setting</button>
+          <button class="tab-btn" data-sec="security" onclick="showAdminSection('security',this)">Keamanan</button>
+        </div>
+      </div>
+      <!-- TOP BAR -->
+      <div class="flex items-center justify-between px-6 py-4 border-b sticky top-0 z-10" style="border-color:rgba(0,229,255,0.12);background:rgba(8,6,20,0.9);backdrop-filter:blur(12px)">
+        <div>
+          <h1 class="orbitron font-bold text-lg gradient-text" id="admin-section-title">OVERVIEW</h1>
+          <div class="text-xs orbitron mt-0.5" style="color:var(--text-muted)" id="admin-user-email">—</div>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="orbitron text-sm hide-mobile" style="color:var(--gold)" id="admin-clock">00:00:00</div>
+          <button onclick="_authLogout()" class="btn-secondary" style="font-size:0.6rem;padding:6px 12px"><i class="fas fa-sign-out-alt"></i> LOGOUT</button>
+        </div>
+      </div>
+
+      <div class="p-5">
+
+      <!-- ── OVERVIEW ── -->
+      <div id="asc-overview" class="admin-sec">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="stat-card"><div class="orbitron font-black text-2xl gradient-text-gold" id="ov-roster">—</div><div class="text-xs mt-1 orbitron" style="color:var(--text-muted)">Total Player</div></div>
+          <div class="stat-card"><div class="orbitron font-black text-2xl" style="color:var(--purple-neon)" id="ov-meta">—</div><div class="text-xs mt-1 orbitron" style="color:var(--text-muted)">Meta Hero</div></div>
+          <div class="stat-card"><div class="orbitron font-black text-2xl" style="color:#4ADE80" id="ov-ach">—</div><div class="text-xs mt-1 orbitron" style="color:var(--text-muted)">Achievement</div></div>
+          <div class="stat-card"><div class="orbitron font-black text-2xl" style="color:var(--gold)" id="ov-sch">—</div><div class="text-xs mt-1 orbitron" style="color:var(--text-muted)">Jadwal Upcoming</div></div>
+        </div>
+        <div class="glass p-5">
+          <h3 class="orbitron font-bold mb-3" style="color:var(--gold);font-size:0.85rem">ℹ️ INFO SISTEM</h3>
+          <p class="text-sm" style="color:var(--text-secondary)">Selamat datang di Panel Admin <span class="sq-name" style="color:var(--gold)">W.I.F.E AURORA</span>. Semua data real-time dari Firebase Firestore. Gambar tersimpan di Cloudinary.</p>
+          <div class="flex gap-3 mt-4 flex-wrap">
+            <div class="flex items-center gap-2 text-xs" style="color:#4ADE80"><i class="fas fa-circle text-xs" style="animation:livePulse 1.5s ease-in-out infinite"></i> Firebase Connected</div>
+            <div class="flex items-center gap-2 text-xs" style="color:#60A5FA"><i class="fas fa-cloud"></i> Cloudinary Ready</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MANAGEMENT ── -->
+      <div id="asc-management" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">👑 MANAGEMENT</h2>
+          <button onclick="_openMgmtForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH</button>
+        </div>
+        <div class="glass p-5"><div id="admin-mgmt-list"></div></div>
+      </div>
+
+      <!-- ── ROSTER ── -->
+      <div id="asc-roster" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">👥 ROSTER</h2>
+          <button onclick="_openRosterForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH PLAYER</button>
+        </div>
+        <div class="glass p-5"><div id="admin-roster-list"></div></div>
+      </div>
+
+      <!-- ── META HERO ── -->
+      <div id="asc-meta" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">⚔ META HERO</h2>
+        </div>
+        <div class="glass p-5"><div id="admin-meta-list"></div></div>
+      </div>
+
+      <!-- ── SCHEDULE ── -->
+      <div id="asc-schedule" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">📅 JADWAL</h2>
+          <button onclick="_openScheduleForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH JADWAL</button>
+        </div>
+        <div class="glass p-5"><div id="admin-schedule-list"></div></div>
+      </div>
+
+      <!-- ── MATCH ── -->
+      <div id="asc-match" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">🏆 HASIL MATCH</h2>
+          <button onclick="_openMatchForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH MATCH</button>
+        </div>
+        <div class="glass p-5"><div id="admin-match-list"></div></div>
+      </div>
+
+      <!-- ── ACHIEVEMENT ── -->
+      <div id="asc-achievement" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">🏅 ACHIEVEMENT</h2>
+          <button onclick="_openAchForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH</button>
+        </div>
+        <div class="glass p-5"><div id="admin-ach-list"></div></div>
+      </div>
+
+      <!-- ── RULES ── -->
+      <div id="asc-rules" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">📜 RULES</h2>
+          <button onclick="_openRulesForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH ATURAN</button>
+        </div>
+        <div class="glass p-5"><div id="admin-rules-list"></div></div>
+      </div>
+
+      <!-- ── ANNOUNCEMENT ── -->
+      <div id="asc-announcement" class="admin-sec" style="display:none">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">📢 PENGUMUMAN</h2>
+          <button onclick="_openAnnForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH</button>
+        </div>
+        <div class="glass p-5"><div id="admin-ann-list"></div></div>
+      </div>
+
+      <!-- ── SETTINGS ── -->
+      <div id="asc-settings" class="admin-sec" style="display:none">
+        <h2 class="orbitron font-bold mb-5" style="color:var(--gold)">⚙ PENGATURAN WEBSITE</h2>
+        <div class="grid md:grid-cols-2 gap-5">
+          <div class="glass p-5">
+            <h3 class="orbitron font-bold mb-4 text-sm" style="color:var(--text-secondary)">IDENTITAS SQUAD</h3>
+            <div class="flex flex-col gap-4">
+              <div><label class="form-label">NAMA SQUAD</label><input id="set-name" class="form-input" placeholder="W.I.F.E AURORA"/></div>
+              <div><label class="form-label">SINGKATAN</label><input id="set-abbr" class="form-input" placeholder="WIFE"/></div>
+              <div><label class="form-label">TAGLINE</label><input id="set-tagline" class="form-input" placeholder="Warriors In Fierce Engagements Aurora"/></div>
+              <div><label class="form-label">MOTTO / QUOTE</label><input id="set-motto" class="form-input" placeholder='"Unite, Fight, Conquer"'/></div>
+            </div>
+          </div>
+          <div class="glass p-5">
+            <h3 class="orbitron font-bold mb-4 text-sm" style="color:var(--text-secondary)">MEDIA SOSIAL</h3>
+            <div class="flex flex-col gap-3">
+              <div><label class="form-label"><i class="fab fa-instagram mr-1" style="color:#E1306C"></i>INSTAGRAM</label><input id="set-ig" class="form-input" placeholder="@wifealliance"/></div>
+              <div><label class="form-label"><i class="fab fa-discord mr-1" style="color:#5865F2"></i>DISCORD</label><input id="set-discord" class="form-input" placeholder="discord.gg/..."/></div>
+              <div><label class="form-label"><i class="fab fa-tiktok mr-1"></i>TIKTOK</label><input id="set-tt" class="form-input" placeholder="@wifealliance"/></div>
+            </div>
+          </div>
+          <div class="glass p-5">
+            <h3 class="orbitron font-bold mb-4 text-sm" style="color:var(--text-secondary)">LOGO SQUAD</h3>
+            <div class="flex flex-col gap-3">
+              <img id="set-logo-preview" src="" alt="Logo Preview" style="display:none;width:80px;height:80px;object-fit:cover;border-radius:50%;border:2px solid rgba(0,229,255,0.4)"/>
+              <label class="form-label">UPLOAD LOGO BARU</label>
+              <input id="set-logo-file" type="file" accept="image/*" class="form-input" style="padding:8px"/>
+              <p class="text-xs" style="color:var(--text-muted)">Format: PNG, JPG, WEBP. Akan diupload ke Cloudinary.</p>
+            </div>
+          </div>
+          <div class="glass p-5">
+            <h3 class="orbitron font-bold mb-4 text-sm" style="color:var(--text-secondary)">BANNER / BACKGROUND</h3>
+            <div class="flex flex-col gap-3">
+              <img id="set-banner-preview" src="" alt="Banner Preview" style="display:none;width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(0,229,255,0.3)"/>
+              <label class="form-label">UPLOAD BANNER BARU</label>
+              <input id="set-banner-file" type="file" accept="image/*" class="form-input" style="padding:8px"/>
+              <p class="text-xs" style="color:var(--text-muted)">Format: PNG, JPG, WEBP. Akan diupload ke Cloudinary.</p>
+            </div>
+          </div>
+
+          <!-- ROLE ORDER -->
+          <div class="glass p-5 md:col-span-2">
+            <h3 class="orbitron font-bold mb-1 text-sm" style="color:var(--text-secondary)">🎮 URUTAN POSISI ROSTER</h3>
+            <p class="text-xs mb-4" style="color:var(--text-muted)">Drag & drop untuk mengatur urutan tampilan posisi di halaman Roster.</p>
+            <div id="role-order-list" style="display:flex;flex-direction:column;gap:8px;user-select:none" ontouchmove="_roleTouchMove(event)">
+            </div>
+            <div class="mt-4">
+              <button onclick="_saveRoleOrder()" class="btn-primary" style="font-size:0.75rem;padding:8px 18px"><i class="fas fa-save mr-1"></i> SIMPAN URUTAN</button>
+            </div>
+          </div>
+        </div>
+        <div class="mt-6">
+          <button onclick="_saveSettings()" class="btn-primary"><i class="fas fa-save"></i> SIMPAN PENGATURAN</button>
+        </div>
+      </div>
+
+      <!-- ── SECURITY ── -->
+      <div id="asc-security" class="admin-sec" style="display:none">
+        <h2 class="orbitron font-bold mb-5" style="color:var(--gold)">🔐 KEAMANAN AKUN</h2>
+        <div class="grid md:grid-cols-2 gap-5">
+          <div class="glass p-5">
+            <h3 class="orbitron font-bold mb-4 text-sm" style="color:var(--text-secondary)">GANTI PASSWORD</h3>
+            <div class="flex flex-col gap-4">
+              <div><label class="form-label">PASSWORD LAMA</label><input id="sec-old" class="form-input" type="password" placeholder="••••••••"/></div>
+              <div><label class="form-label">PASSWORD BARU</label><input id="sec-new" class="form-input" type="password" placeholder="••••••••"/></div>
+              <div><label class="form-label">KONFIRMASI PASSWORD BARU</label><input id="sec-confirm" class="form-input" type="password" placeholder="••••••••"/></div>
+              <button onclick="_changePassword()" class="btn-primary" style="width:fit-content"><i class="fas fa-key"></i> GANTI PASSWORD</button>
+            </div>
+          </div>
+          <div class="glass p-5">
+            <h3 class="orbitron font-bold mb-4 text-sm" style="color:var(--text-secondary)">GANTI EMAIL</h3>
+            <div class="flex flex-col gap-4">
+              <div class="p-3 rounded-lg text-xs" style="background:rgba(0,150,200,0.1);border:1px solid rgba(0,229,255,0.2)">
+                Email aktif: <span style="color:var(--gold)" id="admin-user-email-sec">—</span>
+              </div>
+              <div><label class="form-label">EMAIL BARU</label><input id="sec-email" class="form-input" type="email" placeholder="admin@wifealliance.com"/></div>
+              <div><label class="form-label">KONFIRMASI PASSWORD</label><input id="sec-email-pass" class="form-input" type="password" placeholder="••••••••"/></div>
+              <button onclick="_changeEmail()" class="btn-secondary" style="width:fit-content"><i class="fas fa-envelope"></i> GANTI EMAIL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- end p-5 -->
+    </div><!-- end admin main -->
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="py-10 px-4">
+  <div class="max-w-5xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+      <div>
+        <div class="orbitron font-black text-lg gradient-text mb-1 sq-name">W.I.F.E AURORA</div>
+        <div class="text-xs orbitron mb-3" style="color:var(--text-muted);letter-spacing:0.1em sq-tagline">WARRIORS IN FIERCE ENGAGEMENTS</div>
+        <p class="text-sm leading-relaxed sq-motto" style="color:var(--text-secondary)">"Unite, Fight, Conquer — No Retreat, No Surrender"</p>
+        <div class="flex gap-2 mt-4">
+          <a href="#" class="social-icon" id="footer-ig"><i class="fab fa-instagram"></i></a>
+          <a href="#" class="social-icon" id="footer-discord"><i class="fab fa-discord"></i></a>
+          <a href="#" class="social-icon" id="footer-tt"><i class="fab fa-tiktok"></i></a>
+        </div>
+      </div>
+      <div>
+        <div class="orbitron font-bold mb-4 text-sm" style="color:var(--gold)">NAVIGASI</div>
+        <div class="grid grid-cols-2 gap-1">
+          <button onclick="navigate('dashboard')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Dashboard</button>
+          <button onclick="navigate('roster')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Roster</button>
+          <button onclick="navigate('meta')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Meta Hero</button>
+          <button onclick="navigate('schedule')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Jadwal</button>
+          <button onclick="navigate('achievement')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Achievement</button>
+          <button onclick="navigate('rules')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Rules</button>
+          <button onclick="navigate('announcement')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Pengumuman</button>
+          <button onclick="navigate('match')" class="text-left text-sm py-1" style="color:var(--text-secondary);background:none;border:none;cursor:pointer">→ Hasil Match</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="border-t pt-5 flex flex-wrap items-center justify-between gap-3" style="border-color:rgba(0,229,255,0.12)">
+      <div class="text-xs" style="color:var(--text-muted)">© 2026 <span class="sq-name">W.I.F.E AURORA</span>. All rights reserved.</div>
+      <div class="orbitron text-xs" style="color:var(--text-muted)">Warriors In Fierce Engagements ⚔</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Copy Draft WA
+window._copyDraftWA = function() {
+  const txt = document.getElementById('draft-wa-text');
+  if (!txt) return;
+  navigator.clipboard.writeText(txt.innerText).then(() => {
+    if (typeof Swal !== 'undefined') {
+      const T = Swal.mixin({ toast:true, position:'top-end', showConfirmButton:false, timer:2000, background:'#0A1020', color:'#E8F4FF' });
+      T.fire({ icon:'success', title:'Format disalin ke clipboard! 📋' });
+    }
+  }).catch(() => {
+    const range = document.createRange(); range.selectNode(txt);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+    document.execCommand('copy');
+    window.getSelection().removeAllRanges();
+  });
+};
+
+// Sync security email display with auth email
+document.addEventListener('DOMContentLoaded', () => {
+  const emailEl = document.getElementById('admin-user-email-sec');
+  if (emailEl) {
+    const syncEmail = () => {
+      const main = document.getElementById('admin-user-email');
+      if (main) emailEl.textContent = main.textContent;
+    };
+    syncEmail();
+    setInterval(syncEmail, 2000);
+  }
+});
+</script>
+<!-- ══════════════════════════════════════════════════════
+     BOTTOM NAV BAR (mobile) — Aurora Theme
+     ══════════════════════════════════════════════════════ -->
+<style>
+#bottom-nav {
+  display:flex;
+  position:fixed; bottom:0; left:0; right:0; z-index:999;
+  background:rgba(2,4,8,0.97); backdrop-filter:blur(20px);
+  border-top:1px solid rgba(0,229,255,0.2);
+  box-shadow:0 -4px 20px rgba(0,229,255,0.06);
+  padding:6px 0 max(6px, env(safe-area-inset-bottom));
+}
+@media (min-width:769px) { #bottom-nav { display:none !important; } }
+.bn-item {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:3px; padding:4px 2px;
+  background:none; border:none; cursor:pointer; transition:all 0.2s;
+  color:var(--text-muted); font-family:'Orbitron',sans-serif;
+  font-size:0.45rem; letter-spacing:0.03em; font-weight:600;
+  -webkit-tap-highlight-color:transparent;
+}
+.bn-item i { font-size:1.1rem; transition:all 0.2s; }
+.bn-item.active { color:#00E5FF; }
+.bn-item.active i { text-shadow:0 0 12px rgba(0,229,255,0.8); }
+.bn-item:active { transform:scale(0.92); }
+
+/* MORE DRAWER */
+#bn-drawer {
+  position:fixed; bottom:-100%; left:0; right:0; z-index:998;
+  background:rgba(2,4,8,0.99); backdrop-filter:blur(24px);
+  border-top:1px solid rgba(0,229,255,0.25);
+  border-radius:20px 20px 0 0;
+  padding:12px 16px max(16px, env(safe-area-inset-bottom));
+  transition:bottom 0.35s cubic-bezier(0.4,0,0.2,1);
+}
+#bn-drawer.open { bottom:60px; }
+#bn-drawer-overlay {
+  display:none; position:fixed; inset:0; z-index:997;
+  background:rgba(0,0,0,0.55);
+}
+#bn-drawer-overlay.open { display:block; }
+.bn-drawer-handle {
+  width:40px; height:4px;
+  background:linear-gradient(90deg,#00E5FF,#E040FB);
+  border-radius:2px; margin:0 auto 14px;
+}
+.bn-drawer-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+}
+.bn-drawer-item {
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:12px 4px; border-radius:10px; cursor:pointer;
+  background:rgba(0,229,255,0.05); border:1px solid rgba(0,229,255,0.1);
+  color:var(--text-secondary); font-family:'Orbitron',sans-serif;
+  font-size:0.42rem; font-weight:600; letter-spacing:0.03em;
+  transition:all 0.2s; -webkit-tap-highlight-color:transparent;
+  text-align:center;
+}
+.bn-drawer-item i { font-size:1.2rem; color:#00E5FF; }
+.bn-drawer-item:active, .bn-drawer-item.active {
+  background:rgba(0,229,255,0.12); border-color:rgba(0,229,255,0.4);
+  color:#00E5FF;
+}
+@media (max-width:768px) {
+  #app { padding-bottom:64px; }
+}
+</style>
+
+<!-- Bottom Nav HTML -->
+<nav id="bottom-nav">
+  <button class="bn-item active" id="bn-dashboard" onclick="bnNavigate('dashboard')">
+    <i class="fas fa-home"></i>DASHBOARD
+  </button>
+  <button class="bn-item" id="bn-management" onclick="bnNavigate('management')">
+    <i class="fas fa-crown"></i>MGMT
+  </button>
+  <button class="bn-item" id="bn-roster" onclick="bnNavigate('roster')">
+    <i class="fas fa-users"></i>ROSTER
+  </button>
+  <button class="bn-item" id="bn-schedule" onclick="bnNavigate('schedule')">
+    <i class="fas fa-calendar"></i>JADWAL
+  </button>
+  <button class="bn-item" id="bn-more" onclick="toggleBnDrawer()">
+    <i class="fas fa-grid-2"></i>LAINNYA
+  </button>
+</nav>
+
+<!-- More Drawer -->
+<div id="bn-drawer-overlay" onclick="closeBnDrawer()"></div>
+<div id="bn-drawer">
+  <div class="bn-drawer-handle"></div>
+  <div class="bn-drawer-grid" id="bn-drawer-grid"></div>
+</div>
+
+<script>
+const BN_MORE_ITEMS = [
+  { id:'match',        label:'HASIL\nMATCH',   icon:'fas fa-trophy' },
+  { id:'achievement',  label:'PRESTASI',        icon:'fas fa-medal' },
+  { id:'rules',        label:'RULES',           icon:'fas fa-scroll' },
+  { id:'announcement', label:'PENGUMUMAN',      icon:'fas fa-bullhorn' },
+  { id:'meta',         label:'META\nHERO',      icon:'fas fa-sword' },
+  { id:'poster',       label:'POSTER',          icon:'fas fa-image' },
+];
+
+const BN_MAIN = ['dashboard','management','roster','schedule'];
+
+function buildBnDrawer() {
+  const grid = document.getElementById('bn-drawer-grid');
+  if (!grid) return;
+  grid.innerHTML = BN_MORE_ITEMS.map(item => `
+    <button class="bn-drawer-item" id="bnd-${item.id}" onclick="bnNavigate('${item.id}');closeBnDrawer()">
+      <i class="${item.icon}"></i>
+      <span style="white-space:pre-line;line-height:1.2">${item.label}</span>
+    </button>`).join('');
+}
+
+function updateBnActive(page) {
+  document.querySelectorAll('.bn-item').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.bn-drawer-item').forEach(b => b.classList.remove('active'));
+  if (BN_MAIN.includes(page)) {
+    document.getElementById('bn-' + page)?.classList.add('active');
+  } else if (page !== 'admin' && page !== 'admin-login') {
+    document.getElementById('bnd-' + page)?.classList.add('active');
+    document.getElementById('bn-more')?.classList.add('active');
+  }
+}
+
+function bnNavigate(page) {
+  if (typeof window.navigate === 'function') window.navigate(page);
+  updateBnActive(page);
+}
+
+function toggleBnDrawer() {
+  const drawer = document.getElementById('bn-drawer');
+  const overlay = document.getElementById('bn-drawer-overlay');
+  if (drawer.classList.contains('open')) { closeBnDrawer(); }
+  else { drawer.classList.add('open'); overlay.classList.add('open'); }
+}
+
+function closeBnDrawer() {
+  document.getElementById('bn-drawer')?.classList.remove('open');
+  document.getElementById('bn-drawer-overlay')?.classList.remove('open');
+}
+
+// Patch navigate setelah module selesai load
+document.addEventListener('DOMContentLoaded', function() {
+  buildBnDrawer();
+  // Intercept window.navigate setelah module mendefinisikannya
+  let _checkNav = setInterval(() => {
+    if (typeof window.navigate === 'function' && !window._bnPatched) {
+      window._bnPatched = true;
+      const _orig = window.navigate;
+      window.navigate = function(page) {
+        _orig(page);
+        updateBnActive(page);
+      };
+      clearInterval(_checkNav);
+    }
+  }, 50);
+});
+</script>
+
+<!-- PWA: register service worker -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW register failed', err));
+  });
+}
+</script>
+
+</body>
+</html>
