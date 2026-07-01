@@ -2,7 +2,7 @@
   "name": "W.I.F.E Aurora",
   "short_name": "WIFE Aurora",
   "description": "Warriors In Fierce Engagements Aurora - Squad Management System",
-  "start_url": "./aurora.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#04030A",
