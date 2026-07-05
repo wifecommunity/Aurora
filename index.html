@@ -25,17 +25,69 @@
 <!-- Tailwind CSS — wajib untuk semua utility classes (grid, flex, gap, p-*, text-*, dll) -->
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  tailwind.config = {
-    corePlugins: { preflight: false },
-    theme: {
-      extend: {
-        colors: {
-          purple: { neon: '#00E5FF', light: '#9B59FF', DEFAULT: '#6B3FD4' },
-          gold: { light: '#87CEEB', DEFAULT: '#4FACFE' }
+  if (typeof tailwind !== 'undefined') {
+    tailwind.config = {
+      corePlugins: { preflight: false },
+      theme: {
+        extend: {
+          colors: {
+            purple: { neon: '#00E5FF', light: '#9B59FF', DEFAULT: '#6B3FD4' },
+            gold: { light: '#87CEEB', DEFAULT: '#4FACFE' }
+          }
         }
       }
-    }
+    };
   }
+</script>
+
+<!-- ══ PWA Install Handler ══ -->
+<script>
+  // Tangkap event beforeinstallprompt dari browser
+  window._pwaInstallPrompt = null;
+  window._pwaInstalled = false;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window._pwaInstallPrompt = e;
+    // Tampilkan semua tombol install jika sebelumnya disembunyikan
+    document.querySelectorAll('.pwa-install-btn').forEach(btn => btn.style.display = '');
+  });
+
+  window.addEventListener('appinstalled', () => {
+    window._pwaInstalled = true;
+    window._pwaInstallPrompt = null;
+  });
+
+  window.triggerPwaInstall = async function() {
+    if (window._pwaInstalled) {
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({ icon:'success', title:'Sudah Terinstall!',
+          text:'Aplikasi WIFE Aurora sudah ada di layar utama kamu.',
+          background:'#0A1020', color:'#E8F4FF', confirmButtonColor:'#00E5FF' });
+      } else { alert('Aplikasi sudah terinstall di layar utama!'); }
+      return;
+    }
+    if (window._pwaInstallPrompt) {
+      window._pwaInstallPrompt.prompt();
+      const { outcome } = await window._pwaInstallPrompt.userChoice;
+      if (outcome === 'accepted') {
+        window._pwaInstalled = true;
+        window._pwaInstallPrompt = null;
+      }
+    } else {
+      // Fallback: browser tidak support atau sudah installed
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({ icon:'info', title:'Cara Install',
+          html:`<div style="text-align:left;font-size:0.85rem;color:#ccc;line-height:1.8">
+            <b style="color:#00E5FF">Android (Chrome):</b><br>
+            Ketuk menu <b>⋮</b> → <b>"Tambahkan ke layar utama"</b><br><br>
+            <b style="color:#00E5FF">iPhone (Safari):</b><br>
+            Ketuk ikon <b>Share ↑</b> → <b>"Add to Home Screen"</b>
+          </div>`,
+          background:'#0A1020', color:'#E8F4FF', confirmButtonColor:'#00E5FF' });
+      }
+    }
+  };
 </script>
 
 <!-- Firebase v10 Modular -->
@@ -189,15 +241,18 @@ const FS = {
 // ══════════════════════════════════════════════════════════════
 //  SETTINGS (realtime)
 // ══════════════════════════════════════════════════════════════
-let SETTINGS = { name: 'W.I.F.E AURORA', abbr: 'WIFE', tagline: 'Warriors In Fierce Engagements Aurora', motto: '"Unite, Fight, Conquer — No Retreat, No Surrender"', logo: '', banner: '', ig: '', discord: '', youtube: '', tiktok: '', fb: '', wa: '' };
+let SETTINGS = { name: 'W.I.F.E AURORA', abbr: 'WIFE', tagline: 'Warriors In Fierce Engagements Aurora', motto: '"Unite, Fight, Conquer — No Retreat, No Surrender"', logo: '', banner: '', ig: '', discord: '', youtube: '', tiktok: '', fb: '', wa: '', apkUrl: '' };
+window.SETTINGS = SETTINGS;
 
 onSnapshot(doc(db, 'settings', 'main'), snap => {
   if (snap.exists()) {
     SETTINGS = { ...SETTINGS, ...snap.data() };
+    window.SETTINGS = SETTINGS; // keep global in sync
     if (SETTINGS.roleOrder && Array.isArray(SETTINGS.roleOrder) && SETTINGS.roleOrder.length) {
       ROLE_ORDER = SETTINGS.roleOrder;
     }
     applySettings();
+    if (typeof buildBnDrawer === 'function') buildBnDrawer(); // rebuild drawer with updated apkUrl
   }
 });
 
@@ -225,6 +280,8 @@ function applySettings() {
     const el = document.getElementById(id);
     if (el) { el.href = href; if (href !== '#') el.target = '_blank'; }
   }
+  // PWA install buttons — always visible, handled by triggerPwaInstall()
+  document.querySelectorAll('.pwa-install-btn').forEach(btn => { btn.style.opacity = ''; });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1527,7 +1584,8 @@ window._saveSettings = async function() {
       motto: document.getElementById('set-motto').value.trim(),
       ig: document.getElementById('set-ig').value.trim(),
       discord: document.getElementById('set-discord').value.trim(),
-      tiktok: document.getElementById('set-tt').value.trim()
+      tiktok: document.getElementById('set-tt').value.trim(),
+      apkUrl: document.getElementById('set-apk-url').value.trim()
     };
     // logo
     const logoFile = document.getElementById('set-logo-file').files[0];
@@ -1598,7 +1656,7 @@ function populateSettingsForm() {
     'set-name': SETTINGS.name, 'set-abbr': SETTINGS.abbr,
     'set-tagline': SETTINGS.tagline, 'set-motto': SETTINGS.motto,
     'set-ig': SETTINGS.ig, 'set-discord': SETTINGS.discord,
-    'set-tt': SETTINGS.tiktok
+    'set-tt': SETTINGS.tiktok, 'set-apk-url': SETTINGS.apkUrl
   };
   for (const [id, val] of Object.entries(fields)) {
     const el = document.getElementById(id);
@@ -1698,15 +1756,15 @@ function monthShort(d) {
 const APP = { page: 'dashboard', adminSection: 'overview' };
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'DASHBOARD', icon: 'fas fa-home' },
-  { id: 'management', label: 'MANAGEMENT', icon: 'fas fa-crown' },
-  { id: 'roster', label: 'ROSTER', icon: 'fas fa-users' },
-  { id: 'meta', label: 'META', icon: 'fas fa-sword' },
-  { id: 'schedule', label: 'JADWAL', icon: 'fas fa-calendar' },
-  { id: 'match', label: 'HASIL MATCH', icon: 'fas fa-trophy' },
-  { id: 'achievement', label: 'ACHIEVEMENT', icon: 'fas fa-medal' },
-  { id: 'rules', label: 'RULES', icon: 'fas fa-scroll' },
-  { id: 'announcement', label: 'PENGUMUMAN', icon: 'fas fa-bullhorn' },
+  { id: 'dashboard',    label: 'DASHBOARD',    icon: 'fas fa-home' },
+  { id: 'management',   label: 'MANAGEMENT',   icon: 'fas fa-crown' },
+  { id: 'roster',       label: 'ROSTER',       icon: 'fas fa-users' },
+  { id: 'meta',         label: 'META HERO',    icon: 'fas fa-fire' },
+  { id: 'schedule',     label: 'JADWAL',       icon: 'fas fa-calendar' },
+  { id: 'match',        label: 'HASIL MATCH',  icon: 'fas fa-trophy' },
+  { id: 'achievement',  label: 'ACHIEVEMENT',  icon: 'fas fa-medal' },
+  { id: 'rules',        label: 'RULES',        icon: 'fas fa-scroll' },
+  { id: 'announcement', label: 'PENGUMUMAN',   icon: 'fas fa-bullhorn' },
 ];
 
 function buildNav() {
@@ -1719,7 +1777,7 @@ function buildNav() {
   if (desktop) desktop.innerHTML = html;
   if (sidebar) sidebar.innerHTML = NAV_ITEMS.map(n => `
     <button class="sidebar-nav-item" data-page="${n.id}" onclick="navigate('${n.id}');closeSidebar()">
-      <i class="${n.icon} w-5 text-center"></i> ${n.label}
+      <i class="${n.icon} w-5 text-center" style="flex-shrink:0"></i> <span>${n.label}</span>
     </button>`).join('');
 }
 
@@ -2203,6 +2261,26 @@ footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
     <div class="text-xs" style="color:var(--aurora-cyan);font-family:'Orbitron';opacity:0.7">AURORA</div>
   </div>
   <nav class="p-3 flex flex-col gap-1" id="sidebar-nav"></nav>
+  <!-- Download APK -->
+  <div class="px-3 pb-4 pt-1">
+    <div style="height:1px;background:rgba(0,229,255,0.12);margin-bottom:12px"></div>
+    <a href="#" class="sidebar-apk-btn pwa-install-btn" onclick="event.preventDefault();closeSidebar();setTimeout(()=>triggerPwaInstall(),300);" style="
+      display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;
+      background:linear-gradient(135deg,rgba(0,229,255,0.12),rgba(149,76,233,0.12));
+      border:1px solid rgba(0,229,255,0.35);
+      color:#00E5FF;font-family:'Orbitron',sans-serif;font-size:0.65rem;
+      font-weight:700;letter-spacing:0.06em;text-decoration:none;
+      transition:all 0.25s;box-shadow:0 0 12px rgba(0,229,255,0.1);">
+      <span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:rgba(0,229,255,0.15);flex-shrink:0">
+        <i class="fas fa-download" style="font-size:0.9rem"></i>
+      </span>
+      <div>
+        <div>INSTALL APP</div>
+        <div style="font-size:0.52rem;color:var(--text-muted);font-weight:400;margin-top:1px;letter-spacing:0.03em">Tambah ke layar utama</div>
+      </div>
+      <i class="fas fa-arrow-down-to-bracket" style="margin-left:auto;font-size:0.8rem;opacity:0.6"></i>
+    </a>
+  </div>
 </div>
 
 <!-- NAVBAR -->
@@ -2538,7 +2616,7 @@ footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
       <button class="admin-sidebar-item active" data-sec="overview" onclick="showAdminSection('overview',this)"><i class="fas fa-chart-pie w-5 text-center"></i> Overview</button>
       <button class="admin-sidebar-item" data-sec="management" onclick="showAdminSection('management',this)"><i class="fas fa-crown w-5 text-center"></i> Management</button>
       <button class="admin-sidebar-item" data-sec="roster" onclick="showAdminSection('roster',this)"><i class="fas fa-users w-5 text-center"></i> Roster</button>
-      <button class="admin-sidebar-item" data-sec="meta" onclick="showAdminSection('meta',this)"><i class="fas fa-khanda w-5 text-center"></i> Meta Hero</button>
+      <button class="admin-sidebar-item" data-sec="meta" onclick="showAdminSection('meta',this)"><i class="fas fa-fire w-5 text-center"></i> Meta Hero</button>
       <button class="admin-sidebar-item" data-sec="schedule" onclick="showAdminSection('schedule',this)"><i class="fas fa-calendar w-5 text-center"></i> Jadwal</button>
       <button class="admin-sidebar-item" data-sec="match" onclick="showAdminSection('match',this)"><i class="fas fa-trophy w-5 text-center"></i> Hasil Match</button>
       <button class="admin-sidebar-item" data-sec="achievement" onclick="showAdminSection('achievement',this)"><i class="fas fa-medal w-5 text-center"></i> Achievement</button>
@@ -2723,6 +2801,18 @@ footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
               <button onclick="_saveRoleOrder()" class="btn-primary" style="font-size:0.75rem;padding:8px 18px"><i class="fas fa-save mr-1"></i> SIMPAN URUTAN</button>
             </div>
           </div>
+          <!-- APK DOWNLOAD URL -->
+          <div class="glass p-5 md:col-span-2">
+            <h3 class="orbitron font-bold mb-2 text-sm" style="color:var(--text-secondary)">📱 DOWNLOAD APK</h3>
+            <p class="text-xs mb-4" style="color:var(--text-muted)">URL link download APK yang akan ditampilkan di sidebar dan menu Lainnya. Kosongkan jika belum tersedia.</p>
+            <div class="flex flex-col gap-3">
+              <div>
+                <label class="form-label"><i class="fas fa-download mr-1" style="color:#00E5FF"></i>URL DOWNLOAD APK</label>
+                <input id="set-apk-url" class="form-input" type="url" placeholder="https://drive.google.com/... atau https://apk.wifealliance.com/..."/>
+              </div>
+              <p class="text-xs" style="color:var(--text-muted)">Contoh: link Google Drive, Mediafire, atau URL langsung ke file .apk</p>
+            </div>
+          </div>
         </div>
         <div class="mt-6">
           <button onclick="_saveSettings()" class="btn-primary"><i class="fas fa-save"></i> SIMPAN PENGATURAN</button>
@@ -2858,7 +2948,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* MORE DRAWER */
 #bn-drawer {
-  position:fixed; bottom:-100%; left:0; right:0; z-index:998;
+  position:fixed; bottom:-100%; left:0; right:0; z-index:1001;
   background:rgba(2,4,8,0.99); backdrop-filter:blur(24px);
   border-top:1px solid rgba(0,229,255,0.25);
   border-radius:20px 20px 0 0;
@@ -2867,7 +2957,7 @@ document.addEventListener('DOMContentLoaded', () => {
 }
 #bn-drawer.open { bottom:60px; }
 #bn-drawer-overlay {
-  display:none; position:fixed; inset:0; z-index:997;
+  display:none; position:fixed; inset:0; z-index:1000;
   background:rgba(0,0,0,0.55);
 }
 #bn-drawer-overlay.open { display:block; }
@@ -2901,19 +2991,19 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- Bottom Nav HTML -->
 <nav id="bottom-nav">
   <button class="bn-item active" id="bn-dashboard" onclick="bnNavigate('dashboard')">
-    <i class="fas fa-home"></i>DASHBOARD
+    <i class="fas fa-home"></i><span>DASHBOARD</span>
   </button>
   <button class="bn-item" id="bn-management" onclick="bnNavigate('management')">
-    <i class="fas fa-crown"></i>MGMT
+    <i class="fas fa-crown"></i><span>MGMT</span>
   </button>
   <button class="bn-item" id="bn-roster" onclick="bnNavigate('roster')">
-    <i class="fas fa-users"></i>ROSTER
+    <i class="fas fa-users"></i><span>ROSTER</span>
   </button>
   <button class="bn-item" id="bn-schedule" onclick="bnNavigate('schedule')">
-    <i class="fas fa-calendar"></i>JADWAL
+    <i class="fas fa-calendar"></i><span>JADWAL</span>
   </button>
   <button class="bn-item" id="bn-more" onclick="toggleBnDrawer()">
-    <i class="fas fa-grid-2"></i>LAINNYA
+    <i class="fas fa-th"></i><span>LAINNYA</span>
   </button>
 </nav>
 
@@ -2930,8 +3020,9 @@ const BN_MORE_ITEMS = [
   { id:'achievement',  label:'PRESTASI',        icon:'fas fa-medal' },
   { id:'rules',        label:'RULES',           icon:'fas fa-scroll' },
   { id:'announcement', label:'PENGUMUMAN',      icon:'fas fa-bullhorn' },
-  { id:'meta',         label:'META\nHERO',      icon:'fas fa-sword' },
+  { id:'meta',         label:'META\nHERO',    icon:'fas fa-fire' },
   { id:'poster',       label:'POSTER',          icon:'fas fa-image' },
+  { id:'download-apk', label:'INSTALL\nAPP',    icon:'fas fa-download', isDownload: true },
 ];
 
 const BN_MAIN = ['dashboard','management','roster','schedule'];
@@ -2939,11 +3030,25 @@ const BN_MAIN = ['dashboard','management','roster','schedule'];
 function buildBnDrawer() {
   const grid = document.getElementById('bn-drawer-grid');
   if (!grid) return;
-  grid.innerHTML = BN_MORE_ITEMS.map(item => `
+  const s = window.SETTINGS || {};
+  const apkUrl = window.APK_DOWNLOAD_URL || s.apkUrl || '';
+  grid.innerHTML = BN_MORE_ITEMS.map(item => {
+    if (item.isDownload) {
+      return `
+    <button class="bn-drawer-item pwa-install-btn" id="bnd-${item.id}"
+       onclick="closeBnDrawer();setTimeout(()=>triggerPwaInstall(),300);"
+       style="border:1px solid rgba(0,229,255,0.35);background:linear-gradient(135deg,rgba(0,229,255,0.1),rgba(149,76,233,0.1));position:relative;">
+      <i class="${item.icon}" style="color:#00E5FF"></i>
+      <span style="white-space:pre-line;line-height:1.2;color:#00E5FF">${item.label}</span>
+      <span style="position:absolute;top:4px;right:4px;font-size:0.38rem;color:var(--aurora-cyan);font-family:'Orbitron';opacity:0.8;letter-spacing:0.02em">PWA</span>
+    </button>`;
+    }
+    return `
     <button class="bn-drawer-item" id="bnd-${item.id}" onclick="bnNavigate('${item.id}');closeBnDrawer()">
       <i class="${item.icon}"></i>
       <span style="white-space:pre-line;line-height:1.2">${item.label}</span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
 }
 
 function updateBnActive(page) {
