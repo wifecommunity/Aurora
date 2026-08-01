@@ -374,7 +374,7 @@ FS.watch('management', data => {
   if (APP.page === 'admin' && APP.adminSection === 'management') renderAdminMgmt(mgmtData);
 });
 
-const MGMT_ORDER = ['Owner','Co-Owner','Manager','Co-Manager','Coach','Head Coach','Assistant Coach','Captain','Vice Captain'];
+const MGMT_ORDER = ['Owner','Asisten Owner','Manager','Asisten Manager','Kapten','Coach','Analisa'];
 function sortMgmt(data) {
   return [...data].sort((a, b) => {
     const ai = MGMT_ORDER.findIndex(p => (a.position||'').toLowerCase().includes(p.toLowerCase()));
@@ -422,7 +422,7 @@ window._openMgmtForm = function(id = null) {
           <input id="m-name" class="swal-input" placeholder="Nama Lengkap" value="${m?.name||''}"/></div>
         <div><label class="swal-label">JABATAN</label>
           <select id="m-pos" class="swal-input">
-            ${['Owner','Manager','Kapten','Wakil Kapten','Coach','Analyst'].map(p=>`<option ${m?.position===p?'selected':''}>${p}</option>`).join('')}
+            ${['Owner','Asisten Owner','Manager','Asisten Manager','Kapten','Coach','Analisa'].map(p=>`<option ${m?.position===p?'selected':''}>${p}</option>`).join('')}
           </select></div>
         <div><label class="swal-label">BIO SINGKAT</label>
           <textarea id="m-bio" class="swal-input" placeholder="Bio singkat" rows="2">${m?.bio||''}</textarea></div>
@@ -897,6 +897,91 @@ function renderAdminMeta(data) {
     </div></td>
   </tr>`).join('')}
   </tbody></table></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  META DRAFT PICK (simple text entries, like Rules)
+// ══════════════════════════════════════════════════════════════
+let draftPickData = [];
+
+FS.watch('draftpick', data => {
+  draftPickData = data;
+  if (APP.page === 'meta') renderDraftPick();
+  if (APP.page === 'admin' && APP.adminSection === 'meta') renderAdminDraftPick(data);
+}, 'order');
+
+function renderDraftPick() {
+  const el = document.getElementById('draftpick-list');
+  if (!el) return;
+  if (!draftPickData.length) { el.innerHTML = `<div class="glass p-8 text-center" style="border-color:rgba(0,229,255,0.2)"><div class="text-sm" style="color:var(--text-muted)">Belum ada draft pick yang ditampilkan. Konten akan segera diperbarui.</div></div>`; return; }
+  el.innerHTML = `<div class="flex flex-col gap-2">
+    ${draftPickData.map((d, i) => `
+      <div class="rule-item" data-aos="fade-up">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center orbitron font-bold text-xs" style="background:rgba(0,150,200,0.2);color:var(--purple-neon)">${i+1}</div>
+        <div>
+          <div class="font-semibold text-sm">${d.icon?`${d.icon} `:''}${d.title}</div>
+          <div class="text-sm mt-0.5 leading-relaxed" style="color:var(--text-secondary)">${d.content}</div>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+window._openDraftPickForm = function(id = null) {
+  const d = id ? draftPickData.find(x => x.id === id) : {};
+  Swal.fire({
+    title: id ? 'Edit Draft Pick' : 'Tambah Draft Pick',
+    background: '#0A1020', color: '#E8F4FF', width: '520px',
+    html: `<div class="flex flex-col gap-3 text-left" style="font-family:Rajdhani">
+      <div><label class="swal-label">IKON (emoji)</label><input id="dp-icon" class="swal-input" value="${d?.icon||''}" placeholder="🎯"/></div>
+      <div><label class="swal-label">JUDUL</label><input id="dp-title" class="swal-input" value="${d?.title||''}"/></div>
+      <div><label class="swal-label">ISI / PENJELASAN</label><textarea id="dp-content" class="swal-input" rows="4">${d?.content||''}</textarea></div>
+      <div><label class="swal-label">URUTAN (angka)</label><input id="dp-order" class="swal-input" type="number" value="${d?.order||'1'}"/></div>
+    </div>`,
+    showCancelButton: true, confirmButtonText: id ? 'Simpan' : 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#6B3FD4', cancelButtonColor: '#374151',
+    preConfirm: () => {
+      const data = {
+        icon: document.getElementById('dp-icon').value.trim(),
+        title: document.getElementById('dp-title').value.trim(),
+        content: document.getElementById('dp-content').value.trim(),
+        order: parseInt(document.getElementById('dp-order').value) || 1
+      };
+      if (!data.title || !data.content) { Swal.showValidationMessage('Judul & isi wajib diisi'); return false; }
+      return data;
+    }
+  }).then(async res => {
+    if (!res.isConfirmed) return;
+    toastLoading('Menyimpan...');
+    try {
+      if (id) await FS.update('draftpick', id, res.value);
+      else await FS.add('draftpick', res.value);
+      Swal.close(); toast('success', id ? 'Draft pick diperbarui!' : 'Draft pick ditambahkan!');
+    } catch (e) { toast('error', 'Gagal', e.message); }
+  });
+};
+
+window._deleteDraftPick = async function(id) {
+  const c = await Swal.fire({ title: 'Hapus draft pick ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Hapus', confirmButtonColor: '#EF4444', background: '#0A1020', color: '#E8F4FF' });
+  if (!c.isConfirmed) return;
+  await FS.delete('draftpick', id);
+  toast('success', 'Draft pick dihapus');
+};
+
+function renderAdminDraftPick(data) {
+  const el = document.getElementById('admin-draftpick-list');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = emptyState('Belum ada draft pick'); return; }
+  el.innerHTML = data.map(d => `
+    <div class="flex items-start gap-3 p-3 rounded-lg mb-2" style="background:rgba(0,150,200,0.05);border-left:3px solid rgba(0,229,255,0.3)">
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-sm">${d.icon||''} ${d.title}</div>
+        <div class="text-xs mt-0.5" style="color:var(--text-muted)">${d.content}</div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="_openDraftPickForm('${d.id}')" class="btn-mini-edit"><i class="fas fa-pen"></i></button>
+        <button onclick="_deleteDraftPick('${d.id}')" class="btn-mini-del"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1793,7 +1878,7 @@ window.navigate = function(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'management') renderManagement(mgmtData);
   if (page === 'roster') renderRoster();
-  if (page === 'meta') renderMeta();
+  if (page === 'meta') { renderMeta(); renderDraftPick(); }
   if (page === 'schedule') renderSchedule();
   if (page === 'match') renderMatch();
   if (page === 'achievement') renderAchievement();
@@ -1820,7 +1905,7 @@ window.showAdminSection = function(sec, btn) {
   // Load section data
   if (sec === 'management') renderAdminMgmt(mgmtData);
   if (sec === 'roster') renderAdminRoster(rosterData);
-  if (sec === 'meta') renderAdminMeta(metaData);
+  if (sec === 'meta') { renderAdminMeta(metaData); renderAdminDraftPick(draftPickData); }
   if (sec === 'schedule') renderAdminSchedule(scheduleData);
   if (sec === 'match') renderAdminMatch(matchData);
   if (sec === 'achievement') renderAdminAch(achData);
@@ -2461,6 +2546,32 @@ footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
 <!-- ━━━━━━━━━━━━━ META HERO ━━━━━━━━━━━━━ -->
 <section id="page-meta" class="page">
   <div class="max-w-7xl mx-auto px-4 py-12">
+    <div class="text-center mb-10" data-aos="fade-up">
+      <div class="orbitron text-xs tracking-widest mb-2" style="color:var(--gold)">⚔️ HERO</div>
+      <h1 class="section-title gradient-text">META HERO</h1>
+    </div>
+    <!-- FILTERS -->
+    <div class="glass p-4 mb-8 flex flex-col gap-3" data-aos="fade-up">
+      <div class="flex gap-2 flex-wrap">
+        <span class="text-xs orbitron" style="color:var(--text-muted);padding:7px 0">ROLE:</span>
+        <button class="tab-btn meta-role-btn active" onclick="_metaFilterRole('all',this)">SEMUA</button>
+        <button class="tab-btn meta-role-btn" onclick="_metaFilterRole('EXP Lane',this)">EXP</button>
+        <button class="tab-btn meta-role-btn" onclick="_metaFilterRole('Jungler',this)">JUNGLE</button>
+        <button class="tab-btn meta-role-btn" onclick="_metaFilterRole('Mid Lane',this)">MID</button>
+        <button class="tab-btn meta-role-btn" onclick="_metaFilterRole('Gold Lane',this)">GOLD</button>
+        <button class="tab-btn meta-role-btn" onclick="_metaFilterRole('Roamer',this)">ROAM</button>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <span class="text-xs orbitron" style="color:var(--text-muted);padding:7px 0">TIER:</span>
+        <button class="tab-btn meta-tier-btn active" onclick="_metaFilterTier('all',this)">SEMUA</button>
+        <button class="tab-btn meta-tier-btn" onclick="_metaFilterTier('S+',this)">S+</button>
+        <button class="tab-btn meta-tier-btn" onclick="_metaFilterTier('S',this)">S</button>
+        <button class="tab-btn meta-tier-btn" onclick="_metaFilterTier('A',this)">A</button>
+        <button class="tab-btn meta-tier-btn" onclick="_metaFilterTier('B',this)">B</button>
+        <button class="tab-btn meta-tier-btn" onclick="_metaFilterTier('C',this)">C</button>
+      </div>
+    </div>
+    <div class="auto-grid-3" id="meta-grid"></div>
 
     <!-- ══════════════ DRAFT PICK ══════════════ -->
     <div class="mt-14" data-aos="fade-up">
@@ -2470,9 +2581,10 @@ footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
         <p class="text-sm mt-2" style="color:var(--text-muted)">Patch 2.1.88 / Season 41 &nbsp;·&nbsp; W.I.F.E AURORA</p>
       </div>
 
-      <!-- Konten draft akan diisi kembali -->
-      <div class="glass p-8 text-center" style="border-color:rgba(0,229,255,0.2)">
-        <div class="text-sm" style="color:var(--text-muted)">Belum ada draft pick yang ditampilkan. Konten akan segera diperbarui.</div>
+      <div id="draftpick-list">
+        <div class="glass p-8 text-center" style="border-color:rgba(0,229,255,0.2)">
+          <div class="text-sm" style="color:var(--text-muted)">Belum ada draft pick yang ditampilkan. Konten akan segera diperbarui.</div>
+        </div>
       </div>
 
     </div><!-- end draft section -->
@@ -2702,8 +2814,15 @@ footer { background:var(--bg-deep); border-top:1px solid rgba(0,229,255,0.12); }
       <div id="asc-meta" class="admin-sec" style="display:none">
         <div class="flex items-center justify-between mb-5">
           <h2 class="orbitron font-bold" style="color:var(--gold)">⚔ META HERO</h2>
+          <button onclick="_openMetaForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH HERO</button>
         </div>
         <div class="glass p-5"><div id="admin-meta-list"></div></div>
+
+        <div class="flex items-center justify-between mb-5 mt-8">
+          <h2 class="orbitron font-bold" style="color:var(--gold)">🎯 META DRAFT PICK</h2>
+          <button onclick="_openDraftPickForm()" class="btn-primary" style="font-size:0.7rem;padding:8px 16px"><i class="fas fa-plus"></i> TAMBAH DRAFT</button>
+        </div>
+        <div class="glass p-5"><div id="admin-draftpick-list"></div></div>
       </div>
 
       <!-- ── SCHEDULE ── -->
